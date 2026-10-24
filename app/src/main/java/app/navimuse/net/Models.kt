@@ -1,0 +1,92 @@
+package app.navimuse.net
+
+data class Song(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val artistId: String?,
+    val album: String,
+    val albumId: String?,
+    val coverArt: String?,
+    /** Seconds. */
+    val duration: Int,
+    val track: Int,
+    val disc: Int,
+    val year: Int,
+    val suffix: String?,
+    val bitRate: Int,
+    val starred: Boolean,
+)
+
+data class Album(
+    val id: String,
+    val name: String,
+    val artist: String,
+    val artistId: String?,
+    val coverArt: String?,
+    val songCount: Int,
+    val duration: Int,
+    val year: Int,
+    val genre: String?,
+    val starred: Boolean,
+)
+
+data class Artist(
+    val id: String,
+    val name: String,
+    val coverArt: String?,
+    val albumCount: Int,
+    val imageUrl: String?,
+    val starred: Boolean,
+)
+
+data class Playlist(
+    val id: String,
+    val name: String,
+    val songCount: Int,
+    val duration: Int,
+    val owner: String?,
+    val public: Boolean,
+    val coverArt: String?,
+    val comment: String?,
+) {
+    /** AudioMuse-AI deletes and remakes this playlist every time it runs clustering. */
+    val isAudioMuseManaged: Boolean get() = PlaylistNames.isAudioMuseManaged(name)
+}
+
+data class AlbumDetail(val album: Album, val songs: List<Song>)
+data class ArtistDetail(val artist: Artist, val albums: List<Album>)
+data class ArtistInfo(val biography: String?, val imageUrl: String?, val similar: List<Artist>)
+data class PlaylistDetail(val playlist: Playlist, val songs: List<Song>)
+data class SearchResult(val artists: List<Artist>, val albums: List<Album>, val songs: List<Song>) {
+    val isEmpty: Boolean get() = artists.isEmpty() && albums.isEmpty() && songs.isEmpty()
+}
+data class Starred(val artists: List<Artist>, val albums: List<Album>, val songs: List<Song>)
+
+/** A song with how close it sounds to another one (1.0 = the same song). */
+data class SonicMatch(val song: Song, val similarity: Double)
+
+/** One result of an AudioMuse-AI mood search; [itemId] is the Navidrome song id. */
+data class MoodHit(val itemId: String, val title: String, val artist: String, val similarity: Double)
+
+/** What the server can do, read once after logging in. */
+data class ServerInfo(
+    val serverType: String?,
+    val serverVersion: String?,
+    val openSubsonic: Boolean,
+    /** The AudioMuse-AI plugin is active in Navidrome (sonic similarity + song paths). */
+    val sonicSimilarity: Boolean,
+    val lyrics: Boolean,
+)
+
+enum class AlbumListType(val apiValue: String, val label: String) {
+    NEWEST("newest", "Recently added"),
+    RECENT("recent", "Recently played"),
+    FREQUENT("frequent", "Most played"),
+    RANDOM("random", "Random"),
+    ALPHABETICAL("alphabeticalByName", "A to Z"),
+    BY_ARTIST("alphabeticalByArtist", "By artist"),
+    STARRED("starred", "Favourites"),
+}
+
+class SubsonicException(val code: Int, message: String) : Exception(message)
