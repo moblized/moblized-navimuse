@@ -1,0 +1,68 @@
+name: Smoke test
+
+# Run by hand (Actions → Smoke test → Run workflow): installs the app on an Android emulator,
+# logs in to a throwaway Navidrome with generated songs, clicks through the main screens and
+# checks that nothing was ever deleted on the server. Screenshots go to a draft release.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease -PversionCode=${{ github.run_number }}
+
+      - name: Start Navidrome with sample music
+        run: bash .github/smoke/navidrome.sh
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Click through the app on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 .github/smoke/drive.py
+
+      - name: Check the server never received a delete
+        if: always()
+        run: |
+          mkdir -p smoke-out
+          docker logs navidrome > smoke-out/navidrome.log 2>&1 || true
+          if grep -Ei 'deletePlaylist|deleteShare|deleteUser|songIndexToRemove' smoke-out/navidrome.log; then
+            echo "FAIL  server received a delete request" | tee -a smoke-out/results.txt
+            exit 1
+          fi
+          echo "PASS  no delete requests in the Navidrome log" | tee -a smoke-out/results.txt
+
+      - name: Upload results to a draft release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "smoke-${{ github.run_number }}" smoke-out/* \
+            --draft --title "Smoke test ${{ github.run_number }}" --notes "$(cat smoke-out/results.txt 2>/dev/null || echo 'no results')"

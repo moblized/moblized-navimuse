@@ -77,11 +77,26 @@ class Scrobbler(
         }
     }
 
+    /** Whether "now playing" was already reported for the current song. */
+    private var announced = false
+
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         songId = mediaItem?.let { MediaIds.songIdOf(it.mediaId) }
         playedMs = 0
         submitted = false
-        songId?.let { if (player.playWhenReady) send(it, submission = false) }
+        announced = false
+        if (player.isPlaying) announce()
+    }
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        if (isPlaying) announce()
+    }
+
+    private fun announce() {
+        if (announced) return
+        val id = songId ?: player.currentMediaItem?.let { MediaIds.songIdOf(it.mediaId) }?.also { songId = it } ?: return
+        announced = true
+        send(id, submission = false)
     }
 
     private fun send(id: String, submission: Boolean) {

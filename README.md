@@ -66,6 +66,8 @@ For **Android Auto** with a sideloaded app: in the Android Auto settings on your
 
 Every push to `main` runs the tests, builds a signed release APK, and publishes it as a GitHub Release.
 
+**Smoke test:** Actions → *Smoke test* → *Run workflow*. It starts a throwaway Navidrome with generated songs and an `_automatic` playlist, installs the app on an Android emulator, and clicks through login, library, playlists, keeping a copy, playback, search, settings and dark mode. It also checks that the server never received a delete request. Screenshots and results are saved to a draft release.
+
 To build it yourself, you need the JDK 17 and the Android SDK:
 
 ```sh
