@@ -64,5 +64,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          find smoke-out -type f -empty -delete
+          # Keep only the newest results: remove earlier smoke-test drafts.
+          gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft and (.tagName | startswith("smoke-"))) | .tagName' \
+            | while read -r t; do gh release delete "$t" --yes || true; done
           gh release create "smoke-${{ github.run_number }}" smoke-out/* \
             --draft --title "Smoke test ${{ github.run_number }}" --notes "$(cat smoke-out/results.txt 2>/dev/null || echo 'no results')"

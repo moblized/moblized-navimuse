@@ -84,6 +84,16 @@ def type_text(s):
     time.sleep(0.8)
 
 
+def scroll_to(text, swipes=8):
+    for _ in range(swipes):
+        n = find(text)
+        if n is not None:
+            return n
+        adb("shell", "input", "swipe", "540", "1700", "540", "700", "400")
+        time.sleep(1)
+    raise AssertionError(f"couldn't scroll to {text!r}")
+
+
 def back():
     adb("shell", "input", "keyevent", "4")
     time.sleep(1.5)
@@ -216,7 +226,8 @@ def settings_and_dark():
     tap(desc="Settings")
     wait_for(text="Playback")
     shot("17-settings")
-    tap(text="Dark")
+    tap_node(scroll_to("Dark"))
+    shot("17b-settings-dark")
     time.sleep(2)
     back()
     time.sleep(3)

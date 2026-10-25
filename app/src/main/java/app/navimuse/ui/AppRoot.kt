@@ -6,9 +6,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Home
@@ -126,6 +128,8 @@ fun AppRoot(vm: AppViewModel) {
     CompositionLocalProvider(LocalUi provides actions) {
         Box(Modifier.fillMaxSize()) {
             Scaffold(
+                // Each screen's top bar handles the status bar itself.
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
                     Column {
@@ -176,7 +180,7 @@ fun AppRoot(vm: AppViewModel) {
                         }
                     }
                     busy?.let {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        LinearProgressIndicator(Modifier.fillMaxWidth().statusBarsPadding())
                     }
                 }
             }
