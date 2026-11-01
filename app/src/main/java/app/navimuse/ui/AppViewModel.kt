@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import app.navimuse.BlockedEvent
 import app.navimuse.NaviMuseApp
 import app.navimuse.data.Settings
+import app.navimuse.downloads.Downloads
 import app.navimuse.net.Album
 import app.navimuse.net.Artist
 import app.navimuse.net.AudioMuseLogin
@@ -19,6 +20,8 @@ import app.navimuse.net.Song
 import app.navimuse.net.SonicMatch
 import app.navimuse.net.SubsonicClient
 import app.navimuse.playback.PlayerUiState
+import app.navimuse.playback.Streaming
+import app.navimuse.update.Updater
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,7 +85,86 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (login.value == null) return
         player.connect()
         if (serverInfo.value == null) refreshServerInfo()
+        syncDownloads()
+        if (settings.value.autoUpdate && !checkedForUpdate) {
+            checkedForUpdate = true
+            checkForUpdate(manual = false)
+        }
     }
+
+    private var checkedForUpdate = false
+
+    // --- offline downloads -------------------------------------------------------------------
+
+    val downloads: StateFlow<Map<String, Downloads.Item>> = Downloads.items
+
+    private fun waitingForWifi(): Boolean = settings.value.downloadWifiOnly && !Streaming.unmetered(app)
+
+    /** Saves songs on the phone for offline play. */
+    fun download(songs: List<Song>) {
+        val api = app.api() ?: return
+        val n = Downloads.add(app, api, songs, settings.value.downloadQuality.kbps)
+        val what = when (n) {
+            0 -> "Already on this phone"
+            1 -> "Downloading 1 song"
+            else -> "Downloading $n songs"
+        }
+        say(if (n > 0 && waitingForWifi()) "$what when you're on Wi-Fi" else what)
+    }
+
+    /** Deletes the phone's copies. Nothing on the server changes. */
+    fun removeDownloads(songs: List<Song>) {
+        Downloads.remove(app, songs.map { it.id })
+        say(if (songs.size == 1) "Removed from this phone" else "Removed ${songs.size} songs from this phone")
+    }
+
+    fun removeAllDownloads() {
+        Downloads.removeAll(app)
+        say("Removed all downloads from this phone")
+    }
+
+    /** Keeps a playlist downloaded, including songs added to it later. */
+    fun setPlaylistAutoDownload(playlist: Playlist, songs: List<Song>, on: Boolean) {
+        updateSettings {
+            it.copy(autoDownloadPlaylists = if (on) it.autoDownloadPlaylists + playlist.id else it.autoDownloadPlaylists - playlist.id)
+        }
+        if (on) download(songs) else removeDownloads(songs)
+    }
+
+    fun setFavouritesAutoDownload(on: Boolean) {
+        updateSettings { it.copy(autoDownloadFavourites = on) }
+        if (on) syncDownloads(announce = true)
+    }
+
+    fun syncDownloads(announce: Boolean = false) {
+        viewModelScope.launch {
+            val n = runCatching { app.syncAutoDownloads() }.getOrDefault(0)
+            if (announce) say(if (n == 0) "Your favourites are already on this phone" else "Downloading $n favourite songs")
+        }
+    }
+
+    fun refreshDownloadProgress() = Downloads.refreshProgress(app)
+
+    fun downloadBytes(): Long = Downloads.bytesUsed(app)
+
+    // --- app updates -------------------------------------------------------------------------
+
+    val updateStatus: StateFlow<Updater.Status> = Updater.status
+
+    fun checkForUpdate(manual: Boolean) {
+        viewModelScope.launch {
+            try {
+                val r = Updater.checkAndDownload(app)
+                if (manual && r == null) say("You have the newest version.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (manual) say(friendly(e))
+            }
+        }
+    }
+
+    fun installUpdate() = Updater.install(app)
 
     fun refreshServerInfo() {
         viewModelScope.launch {
@@ -223,6 +305,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         action {
             try {
                 if (starred) api().star(id, kind) else api().unstar(id, kind)
+                if (starred && kind == SubsonicClient.StarKind.SONG && settings.value.autoDownloadFavourites) runCatching { app.syncAutoDownloads() }
             } catch (e: Exception) {
                 _stars.update { it + (id to !starred) }
                 throw e

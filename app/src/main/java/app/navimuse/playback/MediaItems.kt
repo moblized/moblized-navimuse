@@ -4,6 +4,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import app.navimuse.downloads.Downloads
 import app.navimuse.net.Album
 import app.navimuse.net.Playlist
 import app.navimuse.net.Song
@@ -50,6 +51,13 @@ object Extras {
     const val STARRED = "starred"
 }
 
+/**
+ * The cache key the player reads a song under: its download when it has one (so it plays
+ * offline), otherwise the streamed copy at this bitrate.
+ */
+fun streamKey(songId: String, maxBitRateKbps: Int): String =
+    if (Downloads.isDownloaded(songId)) Downloads.key(songId) else "$songId@$maxBitRateKbps"
+
 fun Song.toMediaItem(api: SubsonicClient, maxBitRateKbps: Int, context: String? = null): MediaItem {
     val extras = Bundle().apply {
         putString(Extras.SONG_ID, id)
@@ -76,7 +84,7 @@ fun Song.toMediaItem(api: SubsonicClient, maxBitRateKbps: Int, context: String? 
     return MediaItem.Builder()
         .setMediaId(MediaIds.song(id, context))
         .setUri(api.streamUrl(id, maxBitRateKbps))
-        .setCustomCacheKey("$id@$maxBitRateKbps")
+        .setCustomCacheKey(streamKey(id, maxBitRateKbps))
         .setMediaMetadata(meta)
         .build()
 }

@@ -23,8 +23,10 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shield
@@ -34,9 +36,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.navimuse.downloads.Downloads
 import app.navimuse.net.Album
 import app.navimuse.net.AlbumListType
 import app.navimuse.ui.AppViewModel
@@ -69,6 +74,7 @@ import app.navimuse.ui.components.PlaylistRow
 import app.navimuse.ui.components.SectionHeader
 import app.navimuse.ui.components.SongRow
 import app.navimuse.ui.components.rememberLoad
+import kotlinx.coroutines.delay
 
 /** Your library as a short menu, then what you played lately. */
 @Composable
@@ -82,6 +88,7 @@ fun CollectionScreen(vm: AppViewModel) {
         item { MenuRow("Albums", Icons.Filled.Album) { ui.navigate(Route.Albums) } }
         item { MenuRow("Artists", Icons.Filled.Person) { ui.navigate(Route.Artists) } }
         item { MenuRow("Favourites", Icons.Filled.Favorite) { ui.navigate(Route.Favourites) } }
+        item { MenuRow("Downloads", Icons.Filled.OfflinePin) { ui.navigate(Route.Downloads) } }
         val albums = recent.value.orEmpty()
         if (albums.isNotEmpty()) {
             item { SectionHeader("Recently played") }
@@ -256,4 +263,90 @@ fun FavouritesScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
         }
     }
+}
+
+/** Everything saved on the phone, playable with no connection. */
+@Composable
+fun DownloadsScreen(vm: AppViewModel, onBack: () -> Unit) {
+    val downloads by vm.downloads.collectAsState()
+    val settings by vm.settings.collectAsState()
+    val player by vm.playerState.collectAsState()
+    val items = downloads.values.toList()
+    val done = items.filter { it.state == Downloads.State.DONE }.map { it.song }
+    val pending = items.filter { it.state != Downloads.State.DONE }
+    val busy = pending.any { it.state != Downloads.State.FAILED }
+    LaunchedEffect(busy) {
+        while (busy) {
+            vm.refreshDownloadProgress()
+            delay(1000)
+        }
+    }
+    val bytes = remember(done.size) { vm.downloadBytes() }
+    Column(Modifier.fillMaxSize()) {
+        FloatingTopBar("Downloads", solid = true, onBack = onBack)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item {
+                Text(
+                    "${done.size} track${if (done.size == 1) "" else "s"} · ${formatBytes(bytes)} on this phone",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            if (done.isNotEmpty()) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(done) }
+                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(done, shuffle = true) }
+                    }
+                }
+            }
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { vm.setFavouritesAutoDownload(!settings.autoDownloadFavourites) }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Download favourites automatically", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            if (settings.downloadWifiOnly) "New favourites save on Wi-Fi" else "New favourites save on any connection",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = settings.autoDownloadFavourites, onCheckedChange = { vm.setFavouritesAutoDownload(it) })
+                }
+            }
+            if (pending.isNotEmpty()) {
+                item { SectionHeader("Downloading") }
+                items(pending, key = { "p-${it.song.id}" }) { d ->
+                    SongRow(
+                        d.song,
+                        onPlay = {},
+                        trailingText = when (d.state) {
+                            Downloads.State.FAILED -> "Failed"
+                            Downloads.State.DOWNLOADING -> "${d.percent.toInt()}%"
+                            else -> "Waiting"
+                        },
+                    )
+                }
+            }
+            if (done.isNotEmpty()) item { SectionHeader("On this phone") }
+            if (items.isEmpty()) {
+                item { EmptyBox("Nothing downloaded yet. Tap the download button on an album or playlist to play it without a connection.") }
+            }
+            itemsIndexed(done, key = { _, s -> "d-${s.id}" }) { i, s ->
+                SongRow(s, onPlay = { vm.play(done, i) }, isCurrent = player.current?.song?.id == s.id)
+            }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toDouble())
+    bytes >= 1L shl 20 -> "%.0f MB".format(bytes / (1L shl 20).toDouble())
+    else -> "${bytes / 1024} KB"
 }

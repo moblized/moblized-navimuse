@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">NaviMuse</string>
+    <string name="downloads_channel">Downloads</string>
+    <string name="downloads_channel_description">Progress of songs saving for offline play</string>
+    <string name="updates_channel">App updates</string>
+    <string name="updates_channel_description">Tells you when a new version of NaviMuse is ready to install</string>
 </resources>

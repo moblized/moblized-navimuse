@@ -1,6 +1,7 @@
 package app.navimuse
 
 import android.graphics.Color
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -16,6 +17,7 @@ import app.navimuse.ui.AppRoot
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.isDark
 import app.navimuse.ui.theme.AppTheme
+import app.navimuse.update.Updater
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.request.crossfade
@@ -36,6 +38,8 @@ class MainActivity : ComponentActivity() {
                 .build()
         }
 
+        handleIntent(intent)
+
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
             val dark = settings.isDark(isSystemInDarkTheme())
@@ -52,6 +56,19 @@ class MainActivity : ComponentActivity() {
             AppTheme(dark = dark) {
                 AppRoot(vm)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** "Update ready" notification: install it. */
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(Updater.EXTRA_INSTALL, false) == true) {
+            intent.removeExtra(Updater.EXTRA_INSTALL)
+            vm.installUpdate()
         }
     }
 

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,17 +79,31 @@ import app.navimuse.ui.components.rememberLoad
 import app.navimuse.ui.components.stageColor
 import app.navimuse.ui.friendly
 import app.navimuse.ui.theme.ArtShape
+import app.navimuse.update.Updater
 import kotlinx.coroutines.CancellationException
 
 @Composable
 fun HomeScreen(vm: AppViewModel) {
     val ui = LocalUi.current
     val info by vm.serverInfo.collectAsState()
+    val update by vm.updateStatus.collectAsState()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             PageHeader("Home") {
                 IconButton(onClick = { ui.navigate(Route.Safety) }) { Icon(Icons.Filled.Shield, "Safety") }
                 IconButton(onClick = { ui.navigate(Route.SettingsPage) }) { Icon(Icons.Filled.Settings, "Settings") }
+            }
+        }
+        (update as? Updater.Status.Ready)?.let { ready ->
+            item {
+                InfoCard(
+                    title = "NaviMuse ${ready.release.versionName} is ready",
+                    body = ready.note ?: "Install it now. Your login, downloads and queue stay as they are.",
+                    icon = Icons.Filled.SystemUpdate,
+                    tone = CardTone.GOOD,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    action = { TextButton(onClick = { vm.installUpdate() }, contentPadding = PaddingValues(0.dp)) { Text("Install") } },
+                )
             }
         }
         val i = info

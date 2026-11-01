@@ -34,6 +34,9 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.OfflinePin
+import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MoreVert
@@ -42,6 +45,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -78,6 +82,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
+import app.navimuse.downloads.Downloads
 import app.navimuse.net.Album
 import app.navimuse.net.Artist
 import app.navimuse.net.Playlist
@@ -104,6 +109,8 @@ class UiActions(
     val navigate: (Route) -> Unit,
     val pickPlaylistFor: (List<Song>) -> Unit,
     val saveAsPlaylist: (songs: List<Song>, suggestedName: String) -> Unit,
+    /** Asks once for permission to show download and update notifications (Android 13+). */
+    val askNotifications: () -> Unit = {},
 )
 
 val LocalUi = staticCompositionLocalOf<UiActions> { error("UiActions not provided") }
@@ -301,6 +308,8 @@ fun SongRow(
 ) {
     var menu by remember { mutableStateOf(false) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val downloads by LocalUi.current.vm.downloads.collectAsState()
+    val saved = downloads[song.id]?.state == Downloads.State.DONE
     Row(
         modifier
             .fillMaxWidth()
@@ -336,13 +345,19 @@ fun SongRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                listOf(song.artist, song.album.takeIf { showArt }).filter { !it.isNullOrBlank() }.joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = muted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (saved) {
+                    Icon(Icons.Filled.OfflinePin, "Downloaded", tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                }
+                Text(
+                    listOf(song.artist, song.album.takeIf { showArt }).filter { !it.isNullOrBlank() }.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Text(
             trailingText ?: formatDuration(song.duration),
@@ -364,6 +379,8 @@ fun SongMenu(song: Song, expanded: Boolean, onDismiss: () -> Unit, extra: (@Comp
     val stars by vm.stars.collectAsState()
     val info by vm.serverInfo.collectAsState()
     val starred = stars[song.id] ?: song.starred
+    val downloads by vm.downloads.collectAsState()
+    val saved = downloads[song.id] != null
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         MenuItem("Instant Mix", Icons.Filled.AutoAwesome) { onDismiss(); vm.instantMix(song) }
         if (info?.sonicSimilarity == true) {
@@ -373,6 +390,11 @@ fun SongMenu(song: Song, expanded: Boolean, onDismiss: () -> Unit, extra: (@Comp
         MenuItem("Play next", Icons.Filled.SkipNext) { onDismiss(); vm.playNext(listOf(song)) }
         MenuItem("Add to queue", Icons.AutoMirrored.Filled.QueueMusic) { onDismiss(); vm.addToQueue(listOf(song)) }
         MenuItem("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { onDismiss(); ui.pickPlaylistFor(listOf(song)) }
+        if (saved) {
+            MenuItem("Remove download", Icons.Filled.RemoveCircleOutline) { onDismiss(); vm.removeDownloads(listOf(song)) }
+        } else {
+            MenuItem("Download", Icons.Filled.FileDownload) { onDismiss(); ui.askNotifications(); vm.download(listOf(song)) }
+        }
         MenuItem(if (starred) "Remove from favourites" else "Add to favourites", if (starred) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder) {
             onDismiss()
             vm.setStar(song.id, SubsonicClient.StarKind.SONG, !starred)
@@ -543,6 +565,52 @@ fun CircleAction(icon: ImageVector, description: String, modifier: Modifier = Mo
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
         Icon(icon, description, tint = if (tint == Color.Unspecified) LocalContentColor.current else tint, modifier = Modifier.size(20.dp))
+    }
+}
+
+/**
+ * Download button for a set of songs: an arrow when they aren't saved, a ring while they
+ * download, and a filled pin once every one is on the phone (tap again to remove them).
+ */
+@Composable
+fun DownloadAction(songs: List<Song>, onDownload: () -> Unit, onRemove: () -> Unit) {
+    val ui = LocalUi.current
+    val downloads by ui.vm.downloads.collectAsState()
+    val states = songs.map { downloads[it.id]?.state }
+    val done = songs.isNotEmpty() && states.all { it == Downloads.State.DONE }
+    val busy = states.any { it == Downloads.State.QUEUED || it == Downloads.State.DOWNLOADING }
+    LaunchedEffect(busy) {
+        while (busy) {
+            ui.vm.refreshDownloadProgress()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val progress = if (songs.isEmpty()) 0f else songs.sumOf { s ->
+        val item = downloads[s.id]
+        when (item?.state) {
+            Downloads.State.DONE -> 100.0
+            Downloads.State.DOWNLOADING -> item.percent.toDouble()
+            else -> 0.0
+        }
+    }.toFloat() / songs.size / 100f
+    Box(contentAlignment = Alignment.Center) {
+        when {
+            done -> CircleAction(Icons.Filled.OfflinePin, "Remove download", tint = MaterialTheme.colorScheme.accent, onClick = onRemove)
+            busy -> CircleAction(Icons.Filled.FileDownload, "Downloading", tint = MaterialTheme.colorScheme.accent, onClick = onRemove)
+            else -> CircleAction(Icons.Filled.FileDownload, "Download") {
+                ui.askNotifications()
+                onDownload()
+            }
+        }
+        if (busy) {
+            CircularProgressIndicator(
+                progress = { progress.coerceIn(0.02f, 1f) },
+                modifier = Modifier.size(44.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.accent,
+                trackColor = Color.Transparent,
+            )
+        }
     }
 }
 

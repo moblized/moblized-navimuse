@@ -1,6 +1,11 @@
 package app.navimuse.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -49,6 +54,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.navimuse.data.Settings
@@ -65,6 +72,7 @@ import app.navimuse.ui.screens.CollectionAlbumsScreen
 import app.navimuse.ui.screens.CollectionArtistsScreen
 import app.navimuse.ui.screens.CollectionPlaylistsScreen
 import app.navimuse.ui.screens.CollectionScreen
+import app.navimuse.ui.screens.DownloadsScreen
 import app.navimuse.ui.screens.FavouritesScreen
 import app.navimuse.ui.screens.GenreScreen
 import app.navimuse.ui.screens.HomeScreen
@@ -96,6 +104,7 @@ sealed interface Route {
     data object Artists : Route
     data object Playlists : Route
     data object Favourites : Route
+    data object Downloads : Route
     data object SettingsPage : Route
     data object Safety : Route
 }
@@ -129,6 +138,18 @@ fun AppRoot(vm: AppViewModel) {
         }
     }
 
+    val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    var askedNotifications by rememberSaveable { mutableStateOf(false) }
+    val askNotifications: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= 33 && !askedNotifications &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            askedNotifications = true
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     val actions = remember(vm) {
         UiActions(
             vm = vm,
@@ -138,6 +159,7 @@ fun AppRoot(vm: AppViewModel) {
             },
             pickPlaylistFor = { playlistPickFor = it },
             saveAsPlaylist = { songs, name -> saveFor = songs to name },
+            askNotifications = { askNotifications() },
         )
     }
 
@@ -192,6 +214,7 @@ fun AppRoot(vm: AppViewModel) {
                                 Route.Artists -> CollectionArtistsScreen(vm, onBack)
                                 Route.Playlists -> CollectionPlaylistsScreen(vm, onBack)
                                 Route.Favourites -> FavouritesScreen(vm, onBack)
+                                Route.Downloads -> DownloadsScreen(vm, onBack)
                                 Route.SettingsPage -> SettingsScreen(vm, onBack)
                                 Route.Safety -> SafetyScreen(vm, onBack)
                             }

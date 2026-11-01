@@ -19,6 +19,16 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** The one database Media3 keeps its cache and download indexes in. */
+@OptIn(UnstableApi::class)
+object Media3Db {
+    @Volatile private var db: StandaloneDatabaseProvider? = null
+
+    fun get(context: Context): StandaloneDatabaseProvider = db ?: synchronized(this) {
+        db ?: StandaloneDatabaseProvider(context.applicationContext).also { db = it }
+    }
+}
+
 /**
  * A cache of recently streamed audio, on the phone only, so replays and seeking are smooth.
  * It's the app's own temporary copy; nothing on the server is touched.
@@ -29,9 +39,9 @@ object AudioCache {
 
     fun get(context: Context): SimpleCache = cache ?: synchronized(this) {
         cache ?: SimpleCache(
-            File(context.cacheDir, "audio"),
-            LeastRecentlyUsedCacheEvictor(512L * 1024 * 1024),
-            StandaloneDatabaseProvider(context),
+            File(context.applicationContext.cacheDir, "audio"),
+            LeastRecentlyUsedCacheEvictor(1024L * 1024 * 1024),
+            Media3Db.get(context),
         ).also { cache = it }
     }
 }

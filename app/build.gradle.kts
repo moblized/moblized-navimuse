@@ -91,6 +91,11 @@ dependencies {
     val media3 = "1.8.0"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-session:$media3")
+    // Streams over the app's OkHttp client, so every song reuses one warm connection to the server.
+    implementation("androidx.media3:media3-datasource-okhttp:$media3")
+
+    // Daily update check in the background
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
 
     // Subsonic API calls to Navidrome (and the optional AudioMuse-AI mood search)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

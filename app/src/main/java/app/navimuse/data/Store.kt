@@ -22,6 +22,15 @@ data class Settings(
     val mobileQuality: Quality = Quality.NORMAL,
     val scrobble: Boolean = true,
     val mixSize: Int = 50,
+    /** Quality songs are saved at for offline play. */
+    val downloadQuality: Quality = Quality.ORIGINAL,
+    val downloadWifiOnly: Boolean = true,
+    /** Download every favourite song, and new ones as you add them. */
+    val autoDownloadFavourites: Boolean = false,
+    /** Playlists kept downloaded, including songs added to them later. */
+    val autoDownloadPlaylists: Set<String> = emptySet(),
+    /** Check GitHub for new versions twice a day and download them. */
+    val autoUpdate: Boolean = true,
 )
 
 /** Saved logins and settings, in plain SharedPreferences (the secrets inside are encrypted). */
@@ -78,6 +87,11 @@ class Store(context: Context) {
         mobileQuality = enumOr(prefs.getString("mobileQuality", null), Quality.NORMAL),
         scrobble = prefs.getBoolean("scrobble", true),
         mixSize = prefs.getInt("mixSize", 50),
+        downloadQuality = enumOr(prefs.getString("downloadQuality", null), Quality.ORIGINAL),
+        downloadWifiOnly = prefs.getBoolean("downloadWifiOnly", true),
+        autoDownloadFavourites = prefs.getBoolean("autoDownloadFavourites", false),
+        autoDownloadPlaylists = prefs.getStringSet("autoDownloadPlaylists", null)?.toSet().orEmpty(),
+        autoUpdate = prefs.getBoolean("autoUpdate", true),
     )
 
     fun saveSettings(s: Settings) {
@@ -87,6 +101,11 @@ class Store(context: Context) {
             .putString("mobileQuality", s.mobileQuality.name)
             .putBoolean("scrobble", s.scrobble)
             .putInt("mixSize", s.mixSize)
+            .putString("downloadQuality", s.downloadQuality.name)
+            .putBoolean("downloadWifiOnly", s.downloadWifiOnly)
+            .putBoolean("autoDownloadFavourites", s.autoDownloadFavourites)
+            .putStringSet("autoDownloadPlaylists", HashSet(s.autoDownloadPlaylists))
+            .putBoolean("autoUpdate", s.autoUpdate)
             .apply()
     }
 

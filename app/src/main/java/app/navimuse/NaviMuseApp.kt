@@ -11,12 +11,17 @@ import app.navimuse.net.BlockedRequestException
 import app.navimuse.net.ServerInfo
 import app.navimuse.net.ServerLogin
 import app.navimuse.net.SubsonicClient
+import app.navimuse.downloads.Downloads
 import app.navimuse.playback.PlayerConnection
+import app.navimuse.update.UpdateWorker
+import app.navimuse.update.Updater
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 /** A request the safety guard refused, kept to show on the Safety screen. */
@@ -60,6 +65,10 @@ class NaviMuseApp : Application() {
         _settings.value = store.settings()
         _login.value = store.server()
         _audioMuse.value = store.audioMuse()
+        // Loads the list of downloads, so songs saved on the phone play from it straight away.
+        Downloads.manager(this)
+        UpdateWorker.schedule(this, _settings.value.autoUpdate)
+        Updater.restoreReady(this)
     }
 
     private fun recordBlocked(e: BlockedRequestException) {
@@ -90,6 +99,8 @@ class NaviMuseApp : Application() {
 
     fun logout() {
         player.stopAndClear()
+        // Downloads belong to this login; the phone's copies go with it. Nothing on the server changes.
+        Downloads.removeAll(this)
         store.clearServer()
         _login.value = null
         _serverInfo.value = null
@@ -105,9 +116,29 @@ class NaviMuseApp : Application() {
     }
 
     fun updateSettings(change: (Settings) -> Settings) {
-        val next = change(_settings.value)
+        val before = _settings.value
+        val next = change(before)
         _settings.value = next
         store.saveSettings(next)
+        Downloads.onSettingsChanged(this, next)
+        if (next.autoUpdate != before.autoUpdate) UpdateWorker.schedule(this, next.autoUpdate)
+    }
+
+    /**
+     * Downloads favourites and chosen playlists that aren't on the phone yet. Runs when the app
+     * opens and when those lists change. Returns how many songs were queued.
+     */
+    suspend fun syncAutoDownloads(): Int {
+        val s = _settings.value
+        val api = api() ?: return 0
+        if (!s.autoDownloadFavourites && s.autoDownloadPlaylists.isEmpty()) return 0
+        val songs = withContext(Dispatchers.IO) {
+            buildList<app.navimuse.net.Song> {
+                if (s.autoDownloadFavourites) addAll(runCatching { api.starred().songs }.getOrDefault(emptyList()))
+                s.autoDownloadPlaylists.forEach { id -> addAll(runCatching { api.playlist(id).songs }.getOrDefault(emptyList())) }
+            }
+        }
+        return withContext(Dispatchers.Main) { Downloads.add(this@NaviMuseApp, api, songs, s.downloadQuality.kbps) }
     }
 
     /** Stream bitrate for the network the phone is on right now (0 = original file). */

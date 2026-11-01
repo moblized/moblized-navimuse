@@ -60,6 +60,7 @@ import app.navimuse.data.ThemeMode
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.Route
 import app.navimuse.ui.components.LocalUi
+import app.navimuse.update.Updater
 import kotlinx.coroutines.launch
 
 @Composable
@@ -69,6 +70,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val login by vm.login.collectAsState()
     val info by vm.serverInfo.collectAsState()
     var confirmLogout by remember { mutableStateOf(false) }
+    var confirmRemoveDownloads by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -116,6 +118,39 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             ) { on -> vm.updateSettings { it.copy(scrobble = on) } }
 
             HorizontalDivider()
+            Group("Downloads")
+            QualityPicker("Download quality", settings.downloadQuality) { q -> vm.updateSettings { it.copy(downloadQuality = q) } }
+            SwitchRow("Download on Wi-Fi only", "Downloads wait until you're on Wi-Fi.", settings.downloadWifiOnly) { on ->
+                vm.updateSettings { it.copy(downloadWifiOnly = on) }
+            }
+            SwitchRow(
+                "Download favourites automatically",
+                "Every favourite song is saved on the phone, and new ones as you add them.",
+                settings.autoDownloadFavourites,
+            ) { on -> vm.setFavouritesAutoDownload(on) }
+            val downloads by vm.downloads.collectAsState()
+            val bytes = remember(downloads.size) { vm.downloadBytes() }
+            ListItem(
+                headlineContent = { Text("Downloaded songs") },
+                supportingContent = { Text("${downloads.size} on this phone, ${"%.1f".format(bytes / 1_073_741_824.0)} GB") },
+                trailingContent = {
+                    if (downloads.isNotEmpty()) TextButton(onClick = { confirmRemoveDownloads = true }) { Text("Remove all") }
+                },
+            )
+
+            HorizontalDivider()
+            Group("Updates")
+            SwitchRow(
+                "Update automatically",
+                "Checks GitHub twice a day and downloads new versions. You tap once to install.",
+                settings.autoUpdate,
+            ) { on ->
+                vm.updateSettings { it.copy(autoUpdate = on) }
+                if (on) ui.askNotifications()
+            }
+            UpdateRow(vm)
+
+            HorizontalDivider()
             Group("Appearance")
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 ThemeMode.entries.forEachIndexed { i, mode ->
@@ -150,11 +185,26 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
         }
     }
 
+    if (confirmRemoveDownloads) {
+        AlertDialog(
+            onDismissRequest = { confirmRemoveDownloads = false },
+            title = { Text("Remove all downloads?") },
+            text = { Text("The songs are deleted from this phone only. They stay on your server and you can download them again.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRemoveDownloads = false
+                    vm.removeAllDownloads()
+                }) { Text("Remove all") }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemoveDownloads = false }) { Text("Cancel") } },
+        )
+    }
+
     if (confirmLogout) {
         AlertDialog(
             onDismissRequest = { confirmLogout = false },
             title = { Text("Log out?") },
-            text = { Text("Playback stops and your login is removed from this phone. Nothing on the server changes.") },
+            text = { Text("Playback stops, and your login and downloads are removed from this phone. Nothing on the server changes.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmLogout = false
@@ -164,6 +214,31 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Cancel") } },
         )
     }
+}
+
+@Composable
+private fun UpdateRow(vm: AppViewModel) {
+    val status by vm.updateStatus.collectAsState()
+    val (line, button) = when (val s = status) {
+        Updater.Status.Idle -> "You have ${BuildConfig.VERSION_NAME}" to "Check now"
+        Updater.Status.Checking -> "Checking GitHub…" to null
+        Updater.Status.UpToDate -> "${BuildConfig.VERSION_NAME} is the newest version" to "Check now"
+        is Updater.Status.Downloading -> "Downloading ${s.release.versionName}… ${s.percent}%" to null
+        is Updater.Status.Ready -> (s.note ?: "${s.release.versionName} is ready to install") to "Install"
+        Updater.Status.Installing -> "Installing…" to null
+        is Updater.Status.Failed -> s.message to "Try again"
+    }
+    ListItem(
+        headlineContent = { Text("App version") },
+        supportingContent = { Text(line) },
+        trailingContent = {
+            if (button != null) {
+                TextButton(onClick = {
+                    if (status is Updater.Status.Ready) vm.installUpdate() else vm.checkForUpdate(manual = true)
+                }) { Text(button) }
+            }
+        },
+    )
 }
 
 @Composable

@@ -68,6 +68,7 @@ import app.navimuse.ui.components.ArtistBubble
 import app.navimuse.ui.components.CardTone
 import app.navimuse.ui.components.CircleAction
 import app.navimuse.ui.components.CoverFill
+import app.navimuse.ui.components.DownloadAction
 import app.navimuse.ui.components.EmptyBox
 import app.navimuse.ui.components.FloatingTopBar
 import app.navimuse.ui.components.InfoCard
@@ -232,6 +233,7 @@ fun AlbumScreen(vm: AppViewModel, albumId: String, onBack: () -> Unit) {
                 item {
                     IconsRow {
                         StarAction(a.id, SubsonicClient.StarKind.ALBUM, a.starred)
+                        DownloadAction(songs, onDownload = { vm.download(songs) }, onRemove = { vm.removeDownloads(songs) })
                         CircleAction(Icons.Filled.AutoAwesome, "Instant Mix") { vm.mixFromAlbum(a) }
                         MoreAction(songs)
                     }
@@ -388,6 +390,12 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
                 }
                 item {
                     IconsRow {
+                        // Kept in sync: songs added to the playlist later download too.
+                        DownloadAction(
+                            songs,
+                            onDownload = { vm.setPlaylistAutoDownload(p, songs, true) },
+                            onRemove = { vm.setPlaylistAutoDownload(p, songs, false) },
+                        )
                         if (songs.isNotEmpty()) {
                             CircleAction(Icons.Filled.AutoAwesome, "Instant Mix") { vm.instantMix(songs.random()) }
                         }

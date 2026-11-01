@@ -45,6 +45,7 @@ class PlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var session: MediaLibrarySession? = null
     private var scrobbler: Scrobbler? = null
+    private var preloader: NextTrackPreloader? = null
     private lateinit var player: ExoPlayer
     private lateinit var memory: QueueMemory
 
@@ -54,18 +55,9 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         memory = QueueMemory(this)
 
-        val http = DefaultHttpDataSource.Factory()
-            .setUserAgent("NaviMuse/${BuildConfig.VERSION_NAME}")
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
-        val cached = CacheDataSource.Factory()
-            .setCache(AudioCache.get(this))
-            .setUpstreamDataSourceFactory(http)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
         player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(cached))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(Streaming.playerSource(app)))
+            .setLoadControl(Streaming.loadControl())
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -88,6 +80,7 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         scrobbler = Scrobbler(player, scope, app).also { it.start() }
+        preloader = NextTrackPreloader(player, scope, app).also { it.start() }
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = memory.save(player)
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -122,6 +115,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         memory.save(player)
         scrobbler?.stop()
+        preloader?.stop()
         session?.release()
         session = null
         player.release()
@@ -155,7 +149,7 @@ class PlaybackService : MediaLibraryService() {
             if (item.mediaMetadata.title != null) {
                 out += item.buildUpon()
                     .setUri(api.streamUrl(songId, bitrate))
-                    .setCustomCacheKey("$songId@$bitrate")
+                    .setCustomCacheKey(streamKey(songId, bitrate))
                     .build()
             } else {
                 api.song(songId)?.let { out += it.toMediaItem(api, bitrate, MediaIds.contextOf(item.mediaId)) }
