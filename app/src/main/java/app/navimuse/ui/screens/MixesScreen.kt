@@ -1,5 +1,6 @@
 package app.navimuse.ui.screens
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -43,6 +45,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -55,6 +59,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,11 +68,13 @@ import androidx.compose.ui.unit.dp
 import app.navimuse.net.Song
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.Route
+import app.navimuse.ui.components.ActionPill
 import app.navimuse.ui.components.CardTone
 import app.navimuse.ui.components.Cover
 import app.navimuse.ui.components.InfoCard
 import app.navimuse.ui.components.Load
 import app.navimuse.ui.components.LocalUi
+import app.navimuse.ui.components.PageHeader
 import app.navimuse.ui.components.PlaylistRow
 import app.navimuse.ui.components.SectionHeader
 import app.navimuse.ui.components.SongPickerDialog
@@ -148,8 +156,8 @@ fun MixesScreen(vm: AppViewModel) {
     val sonicOn = info?.sonicSimilarity == true
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("AudioMuse-AI") })
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+            item { PageHeader("Mixes") }
             item {
                 InfoCard(
                     title = if (sonicOn) "Sonic analysis is on" else "Sonic analysis not detected",
@@ -183,27 +191,22 @@ fun MixesScreen(vm: AppViewModel) {
             result?.let { r ->
                 item {
                     Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     ) {
-                        Column(Modifier.padding(12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.Top) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text("${r.songs.size} songs", style = MaterialTheme.typography.bodySmall)
+                                    Text(r.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text("${r.songs.size} tracks", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 IconButton(onClick = { result = null }) { Icon(Icons.Filled.Close, "Clear") }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = { vm.play(r.songs) }) {
-                                    Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
-                                    Text(" Play")
-                                }
-                                FilledTonalButton(onClick = { ui.saveAsPlaylist(r.songs, r.saveName) }) {
-                                    Icon(Icons.Filled.Save, null, Modifier.size(18.dp))
-                                    Text(" Save as playlist")
-                                }
+                            Spacer(Modifier.height(12.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(r.songs) }
+                                ActionPill("Save", Icons.Filled.Save, Modifier.weight(1f)) { ui.saveAsPlaylist(r.songs, r.saveName) }
                             }
                         }
                     }
@@ -222,19 +225,13 @@ fun MixesScreen(vm: AppViewModel) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         player.current?.song?.let { now ->
-                            Button(onClick = { vm.instantMix(now) }) {
-                                Icon(Icons.Filled.AutoAwesome, null, Modifier.size(18.dp))
-                                Text(" From what's playing")
-                            }
+                            ActionPill("From what's playing", Icons.Filled.AutoAwesome, primary = true) { vm.instantMix(now) }
                         }
-                        FilledTonalButton(onClick = { picking = Pick.MIX_SEED }) {
-                            Icon(Icons.Filled.Search, null, Modifier.size(18.dp))
-                            Text(" Pick a song")
-                        }
+                        ActionPill("Pick a song", Icons.Filled.Search) { picking = Pick.MIX_SEED }
+                        ActionPill("Surprise me", Icons.Filled.Shuffle) { vm.surpriseMix() }
                     }
-                    TextButton(onClick = { vm.surpriseMix() }) { Text("Surprise me") }
                 }
             }
 
@@ -249,14 +246,15 @@ fun MixesScreen(vm: AppViewModel) {
                     )
                     PathEnd("Start", pathStart, Icons.Filled.MusicNote) { picking = Pick.PATH_START }
                     PathEnd("End", pathEnd, Icons.Filled.Flag) { picking = Pick.PATH_END }
-                    Text("${pathLength.toInt()} songs", style = MaterialTheme.typography.labelLarge)
+                    Text("${pathLength.toInt()} tracks", style = MaterialTheme.typography.labelLarge)
                     Slider(value = pathLength, onValueChange = { pathLength = it }, valueRange = 10f..60f, steps = 9)
                     Button(
                         onClick = { makePath() },
                         enabled = pathStart != null && pathEnd != null && working == null && sonicOn,
+                        modifier = Modifier.height(44.dp),
                     ) {
                         Icon(Icons.Filled.Timeline, null, Modifier.size(18.dp))
-                        Text(" Make path")
+                        Text("  Make path")
                     }
                     if (!sonicOn) {
                         Text(
@@ -281,27 +279,43 @@ fun MixesScreen(vm: AppViewModel) {
                             action = { TextButton(onClick = { ui.navigate(Route.SettingsPage) }) { Text("Set up in Settings") } },
                         )
                     } else {
-                        OutlinedTextField(
+                        TextField(
                             value = mood,
                             onValueChange = { mood = it },
                             placeholder = { Text("e.g. calm piano for a rainy night") },
                             leadingIcon = { Icon(Icons.Filled.Mood, null) },
                             singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = { searchMood(mood) }),
                             modifier = Modifier.fillMaxWidth(),
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             moodIdeas.forEach { idea ->
-                                AssistChip(onClick = {
-                                    mood = idea
-                                    searchMood(idea)
-                                }, label = { Text(idea) })
+                                Text(
+                                    idea,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier
+                                        .padding(bottom = 8.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
+                                        .clickable {
+                                            mood = idea
+                                            searchMood(idea)
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                )
                             }
                         }
-                        Button(onClick = { searchMood(mood) }, enabled = mood.isNotBlank() && working == null) {
+                        Button(onClick = { searchMood(mood) }, enabled = mood.isNotBlank() && working == null, modifier = Modifier.height(44.dp)) {
                             Icon(Icons.Filled.Search, null, Modifier.size(18.dp))
-                            Text(" Find songs")
+                            Text("  Find songs")
                         }
                     }
                 }
@@ -325,7 +339,7 @@ fun MixesScreen(vm: AppViewModel) {
                     if (s.value.isEmpty()) {
                         item {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Shield, null, tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Filled.Shield, null, tint = MaterialTheme.colorScheme.secondary)
                                 Spacer(Modifier.width(8.dp))
                                 Text("No _automatic playlists right now.", style = MaterialTheme.typography.bodyMedium)
                             }
@@ -369,12 +383,12 @@ fun MixesScreen(vm: AppViewModel) {
 @Composable
 private fun PathEnd(label: String, song: Song?, icon: androidx.compose.ui.graphics.vector.ImageVector, onPick: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(8.dp),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onPick),
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (song != null) Cover(song.coverArt, size = 40.dp) else Icon(icon, null, Modifier.size(40.dp).padding(8.dp))
+            if (song != null) Cover(song.coverArt, size = 44.dp, seed = song.album.ifBlank { song.title }) else Icon(icon, null, Modifier.size(44.dp).padding(10.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

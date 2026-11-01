@@ -17,9 +17,7 @@ enum class Quality(val kbps: Int, val label: String) {
 }
 
 data class Settings(
-    val theme: ThemeMode = ThemeMode.SYSTEM,
-    val dynamicColor: Boolean = true,
-    val pureBlack: Boolean = false,
+    val theme: ThemeMode = ThemeMode.DARK,
     val wifiQuality: Quality = Quality.ORIGINAL,
     val mobileQuality: Quality = Quality.NORMAL,
     val scrobble: Boolean = true,
@@ -75,9 +73,7 @@ class Store(context: Context) {
     }
 
     fun settings(): Settings = Settings(
-        theme = enumOr(prefs.getString("theme", null), ThemeMode.SYSTEM),
-        dynamicColor = prefs.getBoolean("dynamic", true),
-        pureBlack = prefs.getBoolean("pureBlack", false),
+        theme = enumOr(prefs.getString("theme", null), ThemeMode.DARK),
         wifiQuality = enumOr(prefs.getString("wifiQuality", null), Quality.ORIGINAL),
         mobileQuality = enumOr(prefs.getString("mobileQuality", null), Quality.NORMAL),
         scrobble = prefs.getBoolean("scrobble", true),
@@ -87,8 +83,6 @@ class Store(context: Context) {
     fun saveSettings(s: Settings) {
         prefs.edit()
             .putString("theme", s.theme.name)
-            .putBoolean("dynamic", s.dynamicColor)
-            .putBoolean("pureBlack", s.pureBlack)
             .putString("wifiQuality", s.wifiQuality.name)
             .putString("mobileQuality", s.mobileQuality.name)
             .putBoolean("scrobble", s.scrobble)

@@ -9,6 +9,7 @@ import app.navimuse.data.Settings
 import app.navimuse.net.Album
 import app.navimuse.net.Artist
 import app.navimuse.net.AudioMuseLogin
+import app.navimuse.net.Lyrics
 import app.navimuse.net.Playlist
 import app.navimuse.net.PlaylistNames
 import app.navimuse.net.ServerInfo
@@ -201,6 +202,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     suspend fun searchSongs(query: String): List<Song> = api().search(query, songs = 25, albums = 0, artists = 0).songs
+
+    /** Bitrate the server converts to on the phone's current network (0 = the original file). */
+    fun streamingKbps(): Int = app.currentMaxBitRate()
+
+    suspend fun lyrics(song: Song): Lyrics? = api().lyrics(song.id)
+
+    /** Shuffles every song in a genre. */
+    fun playGenre(genre: String) = action("Shuffling $genre…") {
+        val songs = api().songsByGenre(genre, 300)
+        if (songs.isEmpty()) say("No songs tagged $genre.") else play(songs, shuffle = true)
+    }
 
     // --- favourites ------------------------------------------------------------------------
 

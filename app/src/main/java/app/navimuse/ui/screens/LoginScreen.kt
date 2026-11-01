@@ -81,8 +81,8 @@ fun LoginScreen(vm: AppViewModel) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Spacer(Modifier.height(24.dp))
-            Icon(Icons.Filled.GraphicEq, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
-            Text("NaviMuse", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Icon(Icons.Filled.GraphicEq, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(56.dp))
+            Text("NaviMuse", style = MaterialTheme.typography.displayMedium)
             Text(
                 "Your Navidrome music with AudioMuse-AI mixes, and a promise never to delete anything.",
                 style = MaterialTheme.typography.bodyMedium,

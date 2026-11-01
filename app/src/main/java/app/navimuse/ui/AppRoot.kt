@@ -4,12 +4,21 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -22,8 +31,7 @@ import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -38,8 +46,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.navimuse.data.Settings
 import app.navimuse.net.AlbumListType
@@ -51,8 +61,13 @@ import app.navimuse.ui.components.UiActions
 import app.navimuse.ui.screens.AlbumScreen
 import app.navimuse.ui.screens.AlbumsGridScreen
 import app.navimuse.ui.screens.ArtistScreen
+import app.navimuse.ui.screens.CollectionAlbumsScreen
+import app.navimuse.ui.screens.CollectionArtistsScreen
+import app.navimuse.ui.screens.CollectionPlaylistsScreen
+import app.navimuse.ui.screens.CollectionScreen
+import app.navimuse.ui.screens.FavouritesScreen
+import app.navimuse.ui.screens.GenreScreen
 import app.navimuse.ui.screens.HomeScreen
-import app.navimuse.ui.screens.LibraryScreen
 import app.navimuse.ui.screens.LoginScreen
 import app.navimuse.ui.screens.MiniPlayer
 import app.navimuse.ui.screens.MixesScreen
@@ -65,9 +80,9 @@ import app.navimuse.ui.screens.SimilarScreen
 
 enum class Tab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector) {
     Home("Home", Icons.Outlined.Home, Icons.Filled.Home),
-    Library("Library", Icons.Outlined.LibraryMusic, Icons.Filled.LibraryMusic),
-    Mixes("AudioMuse", Icons.Outlined.AutoAwesome, Icons.Filled.AutoAwesome),
+    Mixes("Mixes", Icons.Outlined.AutoAwesome, Icons.Filled.AutoAwesome),
     Search("Search", Icons.Outlined.Search, Icons.Filled.Search),
+    Collection("Collection", Icons.Outlined.LibraryMusic, Icons.Filled.LibraryMusic),
 }
 
 sealed interface Route {
@@ -76,6 +91,11 @@ sealed interface Route {
     data class PlaylistPage(val id: String) : Route
     data class AlbumGrid(val type: AlbumListType) : Route
     data class Similar(val song: Song) : Route
+    data class GenrePage(val name: String) : Route
+    data object Albums : Route
+    data object Artists : Route
+    data object Playlists : Route
+    data object Favourites : Route
     data object SettingsPage : Route
     data object Safety : Route
 }
@@ -128,29 +148,22 @@ fun AppRoot(vm: AppViewModel) {
     CompositionLocalProvider(LocalUi provides actions) {
         Box(Modifier.fillMaxSize()) {
             Scaffold(
-                // Each screen's top bar handles the status bar itself.
+                // Each screen's header handles the status bar itself.
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                containerColor = MaterialTheme.colorScheme.background,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
                     Column {
                         if (playerState.current != null) {
                             MiniPlayer(vm, onOpen = { showPlayer = true })
                         }
-                        NavigationBar {
-                            Tab.entries.forEach { t ->
-                                NavigationBarItem(
-                                    selected = tab == t && stack.isEmpty(),
-                                    onClick = {
-                                        if (tab == t) stack.clear() else {
-                                            tab = t
-                                            stack.clear()
-                                        }
-                                    },
-                                    icon = { Icon(if (tab == t) t.selectedIcon else t.icon, null) },
-                                    label = { Text(t.label) },
-                                )
-                            }
-                        }
+                        BottomTabs(
+                            selected = tab,
+                            onSelect = { t ->
+                                tab = t
+                                stack.clear()
+                            },
+                        )
                     }
                 },
             ) { padding ->
@@ -160,9 +173,9 @@ fun AppRoot(vm: AppViewModel) {
                         saveable.SaveableStateProvider("tab-${tab.name}") {
                             when (tab) {
                                 Tab.Home -> HomeScreen(vm)
-                                Tab.Library -> LibraryScreen(vm)
                                 Tab.Mixes -> MixesScreen(vm)
                                 Tab.Search -> SearchScreen(vm)
+                                Tab.Collection -> CollectionScreen(vm)
                             }
                         }
                     } else {
@@ -174,13 +187,18 @@ fun AppRoot(vm: AppViewModel) {
                                 is Route.PlaylistPage -> PlaylistScreen(vm, top.id, onBack)
                                 is Route.AlbumGrid -> AlbumsGridScreen(vm, top.type, onBack)
                                 is Route.Similar -> SimilarScreen(vm, top.song, onBack)
+                                is Route.GenrePage -> GenreScreen(vm, top.name, onBack)
+                                Route.Albums -> CollectionAlbumsScreen(vm, onBack)
+                                Route.Artists -> CollectionArtistsScreen(vm, onBack)
+                                Route.Playlists -> CollectionPlaylistsScreen(vm, onBack)
+                                Route.Favourites -> FavouritesScreen(vm, onBack)
                                 Route.SettingsPage -> SettingsScreen(vm, onBack)
                                 Route.Safety -> SafetyScreen(vm, onBack)
                             }
                         }
                     }
                     busy?.let {
-                        LinearProgressIndicator(Modifier.fillMaxWidth().statusBarsPadding())
+                        LinearProgressIndicator(Modifier.fillMaxWidth().statusBarsPadding().height(2.dp))
                     }
                 }
             }
@@ -214,6 +232,32 @@ fun AppRoot(vm: AppViewModel) {
                     saveFor = null
                 },
             )
+        }
+    }
+}
+
+/** Icons with small labels on a plain bar; the current tab is drawn in full strength. */
+@Composable
+private fun BottomTabs(selected: Tab, onSelect: (Tab) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .navigationBarsPadding()
+            .height(62.dp),
+    ) {
+        Tab.entries.forEach { t ->
+            val on = t == selected
+            val color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+            Column(
+                Modifier.weight(1f).fillMaxHeight().clickable { onSelect(t) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(if (on) t.selectedIcon else t.icon, null, tint = color, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(t.label, style = MaterialTheme.typography.labelSmall, color = color)
+            }
         }
     }
 }

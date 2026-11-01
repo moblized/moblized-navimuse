@@ -95,8 +95,9 @@ dependencies {
     // Subsonic API calls to Navidrome (and the optional AudioMuse-AI mood search)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // Album art
+    // Album art, and the colour pulled from it for page backgrounds
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")
+    implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
 
     testImplementation("junit:junit:4.13.2")

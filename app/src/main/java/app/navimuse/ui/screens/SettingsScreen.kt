@@ -126,12 +126,6 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                     ) { Text(mode.label) }
                 }
             }
-            SwitchRow("Pure black", "Black background in dark mode, easier on OLED screens.", settings.pureBlack) { on ->
-                vm.updateSettings { it.copy(pureBlack = on) }
-            }
-            SwitchRow("Colours from your wallpaper", "Material You (Android 12 and newer).", settings.dynamicColor) { on ->
-                vm.updateSettings { it.copy(dynamicColor = on) }
-            }
             Text(
                 "The home-screen icon switches to its dark version when the app is in dark mode.",
                 style = MaterialTheme.typography.bodySmall,
@@ -143,7 +137,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             ListItem(
                 headlineContent = { Text("Safety") },
                 supportingContent = { Text("What this app will never do, and how to keep AudioMuse-AI from touching your files") },
-                leadingContent = { Icon(Icons.Filled.Shield, null, tint = MaterialTheme.colorScheme.primary) },
+                leadingContent = { Icon(Icons.Filled.Shield, null, tint = MaterialTheme.colorScheme.secondary) },
                 trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
                 modifier = Modifier.clickable { ui.navigate(Route.Safety) },
             )
@@ -176,10 +170,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
 private fun Group(title: String) {
     Text(
         title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp),
+        style = MaterialTheme.typography.titleLarge,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 28.dp, bottom = 6.dp),
     )
 }
 
@@ -266,7 +258,7 @@ private fun AudioMuseSettings(vm: AppViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
         status?.let {
-            Text(it, color = if (statusIsError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+            Text(it, color = if (statusIsError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodySmall)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(
@@ -276,7 +268,7 @@ private fun AudioMuseSettings(vm: AppViewModel) {
                     scope.launch {
                         val err = vm.saveAudioMuse(address, token, serverName)
                         statusIsError = err != null
-                        status = err ?: "Connected. Mood search is ready on the AudioMuse tab."
+                        status = err ?: "Connected. Mood search is ready on the Mixes tab."
                         busy = false
                     }
                 },

@@ -79,7 +79,7 @@ fun SafetyScreen(vm: AppViewModel, onBack: () -> Unit) {
             item { SectionHeader("This app never") }
             items(neverDoes) { Bullet(it, Icons.Filled.Block, MaterialTheme.colorScheme.error) }
             item { SectionHeader("It only") }
-            items(canDo) { Bullet(it, Icons.Filled.CheckCircle, MaterialTheme.colorScheme.primary) }
+            items(canDo) { Bullet(it, Icons.Filled.CheckCircle, MaterialTheme.colorScheme.secondary) }
 
             item { SectionHeader("Keep AudioMuse-AI away from your files") }
             item {
@@ -116,7 +116,7 @@ fun SafetyScreen(vm: AppViewModel, onBack: () -> Unit) {
             if (blocked.isEmpty()) {
                 item {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.secondary)
                         Spacer(Modifier.width(8.dp))
                         Text("Nothing needed blocking.", style = MaterialTheme.typography.bodyMedium)
                     }

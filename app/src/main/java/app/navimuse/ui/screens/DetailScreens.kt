@@ -1,34 +1,38 @@
 package app.navimuse.ui.screens
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
@@ -36,22 +40,22 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.navimuse.net.Song
@@ -62,70 +66,139 @@ import app.navimuse.ui.components.ActionPill
 import app.navimuse.ui.components.AlbumCard
 import app.navimuse.ui.components.ArtistBubble
 import app.navimuse.ui.components.CardTone
+import app.navimuse.ui.components.CircleAction
 import app.navimuse.ui.components.CoverFill
 import app.navimuse.ui.components.EmptyBox
+import app.navimuse.ui.components.FloatingTopBar
 import app.navimuse.ui.components.InfoCard
 import app.navimuse.ui.components.LoadBox
 import app.navimuse.ui.components.LocalUi
+import app.navimuse.ui.components.MenuItem
 import app.navimuse.ui.components.SectionHeader
 import app.navimuse.ui.components.SongRow
+import app.navimuse.ui.components.glow
+import app.navimuse.ui.components.placeholderColors
+import app.navimuse.ui.components.rememberArtColor
 import app.navimuse.ui.components.rememberLoad
+import app.navimuse.ui.components.stageColor
 import app.navimuse.ui.formatTotal
+import app.navimuse.ui.theme.ArtShape
+import app.navimuse.ui.theme.accent
+import app.navimuse.ui.theme.isDark
 
+/** True once the page's header has scrolled out from under the top bar. */
 @Composable
-private fun DetailTopBar(title: String, onBack: () -> Unit, actions: @Composable () -> Unit = {}) {
-    TopAppBar(
-        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-        actions = { actions() },
-    )
+private fun LazyListState.pastHeader(): Boolean {
+    val past by remember(this) { derivedStateOf { firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 600 } }
+    return past
 }
 
+/** A page with a header that scrolls under a floating back bar. */
 @Composable
-private fun Header(coverArt: String?, title: String, subtitle: String?, detail: String?, onSubtitle: (() -> Unit)? = null, round: Boolean = false) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun DetailPage(
+    title: String,
+    onBack: () -> Unit,
+    state: LazyListState = rememberLazyListState(),
+    actions: @Composable RowScope.() -> Unit = {},
+    content: @Composable (LazyListState) -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        content(state)
+        FloatingTopBar(title, solid = state.pastHeader(), onBack = onBack, actions = actions)
+    }
+}
+
+/** Big art on a wash of its own colour, then the title, a tappable subtitle and details. */
+@Composable
+private fun ArtHeader(
+    coverArt: String?,
+    seed: String,
+    title: String,
+    subtitle: String?,
+    detail: String?,
+    placeholder: ImageVector,
+    onSubtitle: (() -> Unit)? = null,
+) {
+    val art = rememberArtColor(coverArt, seed)
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(glow(stageColor(art, scheme.isDark), scheme.background))
+            .statusBarsPadding()
+            .padding(start = 16.dp, end = 16.dp, top = 64.dp),
+    ) {
         CoverFill(
             coverArt,
-            Modifier.width(220.dp).aspectRatio(1f),
-            shape = if (round) CircleShape else RoundedCornerShape(14.dp),
-            placeholder = if (round) Icons.Filled.Person else Icons.AutoMirrored.Filled.QueueMusic,
+            Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(0.74f).widthIn(max = 340.dp).aspectRatio(1f),
+            placeholder = placeholder,
+            seed = seed,
         )
-        Spacer(Modifier.height(16.dp))
-        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(24.dp))
+        Text(title, style = MaterialTheme.typography.headlineLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
         if (!subtitle.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
             Text(
                 subtitle,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = if (onSubtitle != null) Modifier.clickable(onClick = onSubtitle) else Modifier,
             )
         }
         if (!detail.isNullOrBlank()) {
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(4.dp))
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
+/** Two wide pill buttons side by side; give each `Modifier.weight(1f)`. */
 @Composable
-private fun ActionsRow(content: @Composable () -> Unit) {
+private fun ActionsRow(content: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) { content() }
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+/** Round icon buttons under a header: favourite, Instant Mix, more. */
+@Composable
+private fun IconsRow(content: @Composable RowScope.() -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
 }
 
 @Composable
-private fun StarButton(id: String, kind: SubsonicClient.StarKind, initial: Boolean) {
+private fun StarAction(id: String, kind: SubsonicClient.StarKind, initial: Boolean) {
     val vm = LocalUi.current.vm
     val stars by vm.stars.collectAsState()
     val starred = stars[id] ?: initial
-    IconButton(onClick = { vm.setStar(id, kind, !starred) }) {
-        Icon(
-            if (starred) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            if (starred) "Remove from favourites" else "Add to favourites",
-            tint = if (starred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    CircleAction(
+        if (starred) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+        if (starred) "Remove from favourites" else "Add to favourites",
+        tint = if (starred) MaterialTheme.colorScheme.accent else Color.Unspecified,
+    ) { vm.setStar(id, kind, !starred) }
+}
+
+/** The "…" button: play next, add to queue, add to a playlist. */
+@Composable
+private fun MoreAction(songs: List<Song>) {
+    val ui = LocalUi.current
+    var open by remember { mutableStateOf(false) }
+    Box {
+        CircleAction(Icons.Filled.MoreHoriz, "More") { open = true }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            MenuItem("Play next", Icons.Filled.SkipNext) { open = false; ui.vm.playNext(songs) }
+            MenuItem("Add to queue", Icons.AutoMirrored.Filled.QueueMusic) { open = false; ui.vm.addToQueue(songs) }
+            MenuItem("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { open = false; ui.pickPlaylistFor(songs) }
+        }
     }
 }
 
@@ -134,36 +207,37 @@ fun AlbumScreen(vm: AppViewModel, albumId: String, onBack: () -> Unit) {
     val ui = LocalUi.current
     val player by vm.playerState.collectAsState()
     val loaded = rememberLoad(albumId) { vm.api().album(albumId) }
-    Column(Modifier.fillMaxSize()) {
-        DetailTopBar(loaded.value?.album?.name ?: "Album", onBack) {
-            loaded.value?.album?.let { StarButton(it.id, SubsonicClient.StarKind.ALBUM, it.starred) }
-        }
-        LoadBox(loaded) { detail ->
+    DetailPage(loaded.value?.album?.name ?: "Album", onBack) { state ->
+        LoadBox(loaded, Modifier.statusBarsPadding().padding(top = 56.dp)) { detail ->
             val a = detail.album
             val songs = detail.songs
             val multiDisc = songs.map { it.disc }.distinct().size > 1
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
                 item {
-                    Header(
+                    ArtHeader(
                         a.coverArt,
+                        a.name,
                         a.name,
                         a.artist,
                         listOfNotNull(
                             a.year.takeIf { it > 0 }?.toString(),
                             a.genre,
-                            "${songs.size} songs",
+                            "${songs.size} tracks",
                             formatTotal(songs.sumOf { it.duration }),
                         ).joinToString(" · "),
+                        Icons.Filled.Album,
                         onSubtitle = a.artistId?.let { id -> { ui.navigate(Route.ArtistPage(id)) } },
                     )
                 }
                 item {
+                    IconsRow {
+                        StarAction(a.id, SubsonicClient.StarKind.ALBUM, a.starred)
+                        CircleAction(Icons.Filled.AutoAwesome, "Instant Mix") { vm.mixFromAlbum(a) }
+                        MoreAction(songs)
+                    }
                     ActionsRow {
-                        ActionPill("Play", Icons.Filled.PlayArrow, primary = true) { vm.play(songs) }
-                        ActionPill("Shuffle", Icons.Filled.Shuffle) { vm.play(songs, shuffle = true) }
-                        ActionPill("Instant Mix", Icons.Filled.AutoAwesome) { vm.mixFromAlbum(a) }
-                        ActionPill("Play next", Icons.Filled.SkipNext) { vm.playNext(songs) }
-                        ActionPill("Add to…", Icons.AutoMirrored.Filled.PlaylistAdd) { ui.pickPlaylistFor(songs) }
+                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(songs) }
+                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(songs, shuffle = true) }
                     }
                 }
                 itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
@@ -172,7 +246,7 @@ fun AlbumScreen(vm: AppViewModel, albumId: String, onBack: () -> Unit) {
                             "Disc ${s.disc}",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
                         )
                     }
                     SongRow(
@@ -191,42 +265,57 @@ fun AlbumScreen(vm: AppViewModel, albumId: String, onBack: () -> Unit) {
 @Composable
 fun ArtistScreen(vm: AppViewModel, artistId: String, onBack: () -> Unit) {
     val ui = LocalUi.current
+    val player by vm.playerState.collectAsState()
     val loaded = rememberLoad(artistId) { vm.api().artist(artistId) }
     val infoLoad = rememberLoad("info", artistId) { vm.api().artistInfo(artistId) }
-    Column(Modifier.fillMaxSize()) {
-        DetailTopBar(loaded.value?.artist?.name ?: "Artist", onBack) {
-            loaded.value?.artist?.let { StarButton(it.id, SubsonicClient.StarKind.ARTIST, it.starred) }
-        }
-        LoadBox(loaded) { detail ->
+    DetailPage(loaded.value?.artist?.name ?: "Artist", onBack) { state ->
+        LoadBox(loaded, Modifier.statusBarsPadding().padding(top = 56.dp)) { detail ->
             val artist = detail.artist
             val topLoad = rememberLoad("top", artist.name) { vm.api().topSongs(artist.name, 10) }
             val info = infoLoad.value
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            val bg = MaterialTheme.colorScheme.background
+            LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
                 item {
-                    Header(
-                        artist.coverArt,
-                        artist.name,
-                        null,
-                        "${detail.albums.size} album${if (detail.albums.size == 1) "" else "s"}",
-                        round = true,
-                    )
+                    // Full-bleed photo fading into the page, with the name set large over its foot.
+                    Box(Modifier.fillMaxWidth().height(360.dp)) {
+                        CoverFill(artist.coverArt, Modifier.fillMaxSize(), shape = RectangleShape, placeholder = Icons.Filled.Person, seed = artist.name)
+                        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to bg)))
+                        Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 16.dp)) {
+                            Text(
+                                artist.name,
+                                style = MaterialTheme.typography.displayMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "${detail.albums.size} album${if (detail.albums.size == 1) "" else "s"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 item {
+                    IconsRow {
+                        StarAction(artist.id, SubsonicClient.StarKind.ARTIST, artist.starred)
+                    }
                     ActionsRow {
-                        ActionPill("Artist radio", Icons.Filled.Radio, primary = true) { vm.artistRadio(artist) }
+                        ActionPill("Artist radio", Icons.Filled.Radio, Modifier.weight(1f), primary = true) { vm.artistRadio(artist) }
                         topLoad.value?.takeIf { it.isNotEmpty() }?.let { top ->
-                            ActionPill("Play top songs", Icons.Filled.PlayArrow) { vm.play(top) }
+                            ActionPill("Top tracks", Icons.Filled.PlayArrow, Modifier.weight(1f)) { vm.play(top) }
                         }
                     }
                 }
                 val top = topLoad.value.orEmpty()
                 if (top.isNotEmpty()) {
-                    item { SectionHeader("Top songs") }
-                    itemsIndexed(top.take(5), key = { _, s -> "top-${s.id}" }) { i, s -> SongRow(s, onPlay = { vm.play(top, i) }) }
+                    item { SectionHeader("Popular tracks") }
+                    itemsIndexed(top.take(5), key = { _, s -> "top-${s.id}" }) { i, s ->
+                        SongRow(s, onPlay = { vm.play(top, i) }, isCurrent = player.current?.song?.id == s.id)
+                    }
                 }
                 item { SectionHeader("Albums") }
                 item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(detail.albums, key = { it.id }) { a -> AlbumCard(a) { ui.navigate(Route.AlbumPage(a.id)) } }
                     }
                 }
@@ -234,7 +323,7 @@ fun ArtistScreen(vm: AppViewModel, artistId: String, onBack: () -> Unit) {
                 if (similar.isNotEmpty()) {
                     item { SectionHeader("Sounds like") }
                     item {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(similar, key = { it.id }) { a -> ArtistBubble(a) { ui.navigate(Route.ArtistPage(a.id)) } }
                         }
                     }
@@ -259,7 +348,7 @@ private fun Biography(text: String) {
             maxLines = if (expanded) Int.MAX_VALUE else 4,
             overflow = TextOverflow.Ellipsis,
         )
-        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Less" else "More") }
+        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) { Text(if (expanded) "Show less" else "Read more") }
     }
 }
 
@@ -269,18 +358,19 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
     val player by vm.playerState.collectAsState()
     val version by vm.playlistsVersion.collectAsState()
     val loaded = rememberLoad(playlistId, version) { vm.api().playlist(playlistId) }
-    Column(Modifier.fillMaxSize()) {
-        DetailTopBar(loaded.value?.playlist?.name ?: "Playlist", onBack)
-        LoadBox(loaded) { detail ->
+    DetailPage(loaded.value?.playlist?.name ?: "Playlist", onBack) { state ->
+        LoadBox(loaded, Modifier.statusBarsPadding().padding(top = 56.dp)) { detail ->
             val p = detail.playlist
             val songs = detail.songs
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
                 item {
-                    Header(
+                    ArtHeader(
                         p.coverArt,
                         p.name,
-                        p.owner?.let { "by $it" },
-                        "${songs.size} songs · ${formatTotal(songs.sumOf { it.duration })}",
+                        p.name,
+                        p.owner?.let { "By $it" },
+                        "${songs.size} tracks · ${formatTotal(songs.sumOf { it.duration })}",
+                        Icons.AutoMirrored.Filled.QueueMusic,
                     )
                 }
                 if (p.isAudioMuseManaged) {
@@ -291,19 +381,24 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
                                 "Keep a copy to hold on to these songs.",
                             icon = Icons.Filled.Shield,
                             tone = CardTone.WARNING,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            action = { TextButton(onClick = { vm.keepCopy(p) }) { Text("Keep a copy") } },
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                            action = { TextButton(onClick = { vm.keepCopy(p) }, contentPadding = PaddingValues(0.dp)) { Text("Keep a copy") } },
                         )
                     }
                 }
                 item {
-                    ActionsRow {
-                        ActionPill("Play", Icons.Filled.PlayArrow, primary = true) { vm.play(songs) }
-                        ActionPill("Shuffle", Icons.Filled.Shuffle) { vm.play(songs, shuffle = true) }
-                        songs.firstOrNull()?.let { first ->
-                            ActionPill("Instant Mix", Icons.Filled.AutoAwesome) { vm.instantMix(songs.random()) }
+                    IconsRow {
+                        if (songs.isNotEmpty()) {
+                            CircleAction(Icons.Filled.AutoAwesome, "Instant Mix") { vm.instantMix(songs.random()) }
                         }
-                        ActionPill("Copy", Icons.Filled.ContentCopy) { ui.saveAsPlaylist(songs, "${app.navimuse.net.PlaylistNames.pretty(p.name)} copy") }
+                        CircleAction(Icons.Filled.ContentCopy, "Copy playlist") {
+                            ui.saveAsPlaylist(songs, "${app.navimuse.net.PlaylistNames.pretty(p.name)} copy")
+                        }
+                        MoreAction(songs)
+                    }
+                    ActionsRow {
+                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(songs) }
+                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(songs, shuffle = true) }
                     }
                 }
                 if (songs.isEmpty()) item { EmptyBox("This playlist is empty.") }
@@ -321,14 +416,14 @@ fun SimilarScreen(vm: AppViewModel, song: Song, onBack: () -> Unit) {
     val ui = LocalUi.current
     val loaded = rememberLoad("similar", song.id) { vm.sonicSimilar(song) }
     Column(Modifier.fillMaxSize()) {
-        DetailTopBar("Sounds like ${song.title}", onBack)
+        FloatingTopBar("Sounds like ${song.title}", solid = true, onBack = onBack)
         LoadBox(loaded) { matches ->
             val songs = listOf(song) + matches.map { it.song }.filter { it.id != song.id }
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
                 item {
                     ActionsRow {
-                        ActionPill("Play all", Icons.Filled.PlayArrow, primary = true) { vm.play(songs) }
-                        ActionPill("Save as playlist", Icons.Filled.Save) { ui.saveAsPlaylist(songs, "Sounds like ${song.title}") }
+                        ActionPill("Play all", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(songs) }
+                        ActionPill("Save", Icons.Filled.Save, Modifier.weight(1f)) { ui.saveAsPlaylist(songs, "Sounds like ${song.title}") }
                     }
                 }
                 if (matches.isEmpty()) item { EmptyBox("AudioMuse-AI found nothing similar. It may not have analysed this song yet.") }
@@ -341,5 +436,43 @@ fun SimilarScreen(vm: AppViewModel, song: Song, onBack: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** Every album in one genre, with a button to shuffle all of its songs. */
+@Composable
+fun GenreScreen(vm: AppViewModel, genre: String, onBack: () -> Unit) {
+    val ui = LocalUi.current
+    val colors = remember(genre) { placeholderColors(genre) }
+    Column(Modifier.fillMaxSize()) {
+        FloatingTopBar(genre, solid = true, onBack = onBack)
+        AlbumGrid(
+            key = genre,
+            load = { offset, size -> vm.api().albumsByGenre(genre, size, offset) },
+            onOpen = { ui.navigate(Route.AlbumPage(it.id)) },
+            header = {
+                Column {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(132.dp)
+                            .background(Brush.linearGradient(listOf(colors.first, colors.second)), ArtShape),
+                        contentAlignment = Alignment.BottomStart,
+                    ) {
+                        Text(
+                            genre,
+                            style = MaterialTheme.typography.displaySmall,
+                            color = Color.White,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                    Row(Modifier.padding(top = 16.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActionPill("Shuffle $genre", Icons.Filled.Shuffle, primary = true) { vm.playGenre(genre) }
+                    }
+                }
+            },
+        )
     }
 }

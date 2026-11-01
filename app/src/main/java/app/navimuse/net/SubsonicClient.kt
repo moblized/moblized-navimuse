@@ -139,6 +139,19 @@ class SubsonicClient(
 
     suspend fun starred(): Starred = Parse.starred(call("getStarred2"))
 
+    suspend fun genres(): List<Genre> = Parse.genres(call("getGenres"))
+
+    suspend fun albumsByGenre(genre: String, size: Int = 60, offset: Int = 0): List<Album> =
+        Parse.albumList(
+            call("getAlbumList2", listOf("type" to "byGenre", "genre" to genre, "size" to size.toString(), "offset" to offset.toString())),
+        )
+
+    suspend fun songsByGenre(genre: String, count: Int = 100): List<Song> =
+        Parse.songList(call("getSongsByGenre", listOf("genre" to genre, "count" to count.toString())), "songsByGenre")
+
+    /** Lyrics from the song's tags or a .lrc file next to it (needs OpenSubsonic "songLyrics"). */
+    suspend fun lyrics(songId: String): Lyrics? = Parse.lyrics(call("getLyricsBySongId", listOf("id" to songId)))
+
     suspend fun randomSongs(size: Int = 50): List<Song> =
         Parse.songList(call("getRandomSongs", listOf("size" to size.toString())), "randomSongs")
 

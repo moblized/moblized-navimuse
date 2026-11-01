@@ -153,6 +153,29 @@ object Parse {
         )
     }
 
+    fun genres(resp: JSONObject): List<Genre> =
+        resp.optJSONObject("genres")?.arrayOf("genre").objects().mapNotNull { g ->
+            val name = g.str("value") ?: g.str("name") ?: return@mapNotNull null
+            Genre(name.trim(), g.optInt("songCount"), g.optInt("albumCount"))
+        }.filter { it.name.isNotEmpty() }
+
+    /**
+     * OpenSubsonic getLyricsBySongId → lyricsList.structuredLyrics[]. Synced lyrics are preferred.
+     * Their "offset" (ms) is applied: a positive offset shows lines sooner, a negative one later.
+     */
+    fun lyrics(resp: JSONObject): Lyrics? {
+        val all = resp.optJSONObject("lyricsList")?.arrayOf("structuredLyrics").objects().map { l ->
+            val offset = l.optLong("offset", 0L)
+            val synced = l.optBoolean("synced", false)
+            val lines = l.arrayOf("line").objects().map { line ->
+                val start = if (synced && line.has("start")) (line.optLong("start") - offset).coerceAtLeast(0L) else null
+                LyricLine(start, line.optString("value", "").trim())
+            }
+            Lyrics(synced, lines)
+        }.filter { l -> l.lines.any { it.text.isNotEmpty() } }
+        return all.firstOrNull { it.synced } ?: all.firstOrNull()
+    }
+
     /** AudioMuse-AI POST /api/clap/search → {"results": [{item_id, title, author, similarity}]} */
     fun moodHits(body: String): List<MoodHit> {
         val o = JSONObject(body)

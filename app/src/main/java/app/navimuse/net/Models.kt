@@ -63,6 +63,13 @@ data class SearchResult(val artists: List<Artist>, val albums: List<Album>, val 
 }
 data class Starred(val artists: List<Artist>, val albums: List<Album>, val songs: List<Song>)
 
+data class Genre(val name: String, val songCount: Int, val albumCount: Int)
+
+/** One line of lyrics; [startMs] is set when the lyrics are synced to the song. */
+data class LyricLine(val startMs: Long?, val text: String)
+
+data class Lyrics(val synced: Boolean, val lines: List<LyricLine>)
+
 /** A song with how close it sounds to another one (1.0 = the same song). */
 data class SonicMatch(val song: Song, val similarity: Double)
 

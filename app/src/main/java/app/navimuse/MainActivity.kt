@@ -1,11 +1,14 @@
 package app.navimuse
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,11 +40,16 @@ class MainActivity : ComponentActivity() {
             val settings by vm.settings.collectAsStateWithLifecycle()
             val dark = settings.isDark(isSystemInDarkTheme())
             SideEffect { darkTheme = dark }
-            AppTheme(
-                dark = dark,
-                dynamicColor = settings.dynamicColor,
-                pureBlack = settings.pureBlack && dark,
-            ) {
+            // Status and navigation bar icons follow the app's look, not the phone's.
+            LaunchedEffect(dark) {
+                val bars = if (dark) {
+                    SystemBarStyle.dark(Color.TRANSPARENT)
+                } else {
+                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                }
+                enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+            }
+            AppTheme(dark = dark) {
                 AppRoot(vm)
             }
         }

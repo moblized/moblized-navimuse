@@ -89,6 +89,39 @@ class ParseTest {
     }
 
     @Test
+    fun genres() {
+        val g = Parse.genres(
+            Parse.envelope(ok(""","genres":{"genre":[{"value":"Rock","songCount":12,"albumCount":3},{"value":"","songCount":1},{"value":"Jazz","albumCount":1}]}""")),
+        )
+        assertEquals(listOf("Rock", "Jazz"), g.map { it.name })
+        assertEquals(3, g[0].albumCount)
+    }
+
+    @Test
+    fun syncedLyricsArePreferredAndOffsetApplied() {
+        val l = Parse.lyrics(
+            Parse.envelope(
+                ok(
+                    ""","lyricsList":{"structuredLyrics":[
+                        {"lang":"eng","synced":false,"line":[{"value":"plain one"},{"value":"plain two"}]},
+                        {"lang":"eng","synced":true,"offset":-100,"line":[{"start":0,"value":"first"},{"start":5000,"value":"second"}]}]}""",
+                ),
+            ),
+        )!!
+        assertTrue(l.synced)
+        assertEquals(listOf(100L, 5100L), l.lines.map { it.startMs })
+        assertEquals("second", l.lines[1].text)
+    }
+
+    @Test
+    fun noLyrics() {
+        assertNull(Parse.lyrics(Parse.envelope(ok(""","lyricsList":{}"""))))
+        val plain = Parse.lyrics(Parse.envelope(ok(""","lyricsList":{"structuredLyrics":{"synced":false,"line":[{"value":"only"}]}}""")))!!
+        assertFalse(plain.synced)
+        assertNull(plain.lines.single().startMs)
+    }
+
+    @Test
     fun serverAddresses() {
         assertEquals("http://192.168.1.5:4533", ServerUrl.normalize("192.168.1.5:4533"))
         assertEquals("https://music.example.com", ServerUrl.normalize("https://music.example.com/app/#/album/all"))
