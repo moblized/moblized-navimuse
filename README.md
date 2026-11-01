@@ -4,7 +4,11 @@ An Android music player for **Navidrome** with **AudioMuse-AI** mixes, built so 
 
 ## What it does
 
-- **Your library:** home shelves (recently added, recently played, most played, discover), albums, artists, playlists, favourites and search.
+- **Your library:** home shelves (recently played, recently added, most played, discover), albums, artists, playlists, favourites, genres and search.
+- **Looks:** a black, Tidal-style layout where album art supplies the colour: album, playlist and now-playing pages are washed in the colour of their cover. Type is Instrument Sans. A light look is in Settings.
+- **Now playing:** synced lyrics (when your files have them), the audio quality you're actually hearing, queue, Instant Mix and similar songs.
+- **Offline downloads:** download albums and playlists to play without a connection. Downloaded playlists stay in sync, and favourites can download automatically. Wi-Fi only by default. Removing a download only deletes the phone's copy.
+- **Automatic updates:** the app checks this repo's Releases twice a day, downloads new versions and installs them with one tap.
 - **AudioMuse-AI**, through Navidrome's AudioMuse-AI plugin:
   - **Instant Mix** from any song, album or what's playing. You also get "Instant Mixes for you" on the home screen and a "Surprise mix".
   - **Similar songs**, with a match percentage for each one.
@@ -12,10 +16,10 @@ An Android music player for **Navidrome** with **AudioMuse-AI** mixes, built so 
   - **Song path:** pick a start song and an end song, and get a smooth journey between them.
   - **Mood search** (optional, talks to AudioMuse-AI directly): type "calm piano for a rainy night" and get matching songs.
 - **Keep AudioMuse playlists:** AudioMuse-AI deletes every playlist ending in `_automatic` each time it runs clustering. NaviMuse marks those playlists and can save a normal copy, one at a time or all at once, so the next run leaves them alone.
-- **Playback** keeps going in the background, with notification, lock-screen and Bluetooth controls. Recent audio is cached on the phone so replays and seeking are smooth. The queue comes back after a restart, and plays are reported to Navidrome.
+- **Playback** keeps going in the background, with notification, lock-screen and Bluetooth controls. Songs start after about a second of audio, the next song is pre-loaded so skips are instant, and every song reuses one connection to your server. Recent audio is cached on the phone (up to 1 GB). The queue comes back after a restart, and plays are reported to Navidrome.
 - **Android Auto:** tabs for Mixes, Recently added, Playlists and Favourites, an "Instant Mix from what's playing" button, and voice search ("play … on NaviMuse").
 - **Streaming quality** can be set separately for Wi-Fi and mobile data (original, 320, 192 or 128 kbps).
-- **Looks:** light, dark and pure-black themes, Material You colours, and a dark home-screen icon in dark mode.
+- **Home-screen icon** switches to its dark version when the app is in dark mode.
 
 ## Why it can't delete your files
 
@@ -29,6 +33,8 @@ Every request passes through one gate, [`SafetyGuard`](app/src/main/java/app/nav
 | Playlist names ending in `_automatic` (AudioMuse-AI deletes those) | Favourites (star/unstar) and play reports (scrobble) |
 | `startScan`, play-queue saves, user, share and radio changes | |
 | Any AudioMuse-AI call except searching. Its API token is admin-level, so cleaning, clustering, analysis, delete and restore calls are all blocked | AudioMuse-AI mood search (`POST /api/clap/search`) |
+
+Downloads are stored in the app's own storage on the phone. "Remove download" deletes that copy only. The one request that doesn't go to your server is the update check, which reads this repo's public Releases page on GitHub (turn it off under Settings → Updates).
 
 The unit tests in [`SafetyGuardTest`](app/src/test/java/app/navimuse/SafetyGuardTest.kt) check every one of these, and they run on every build. The Safety screen in the app lists anything it blocked during the session.
 
@@ -52,6 +58,7 @@ An app on your phone can't control what AudioMuse-AI does on the server, so chec
 
 1. Open **Releases** on this repo and download the newest `navimuse-1.0.N.apk` on your phone.
 2. Open it and allow installs from your browser or file manager if asked. New versions install over old ones and keep your login.
+3. After that the app updates itself: when a new version is ready you get a notification and a banner on Home; tap **Install**. The first time, Android asks you to allow installs from NaviMuse.
 
 For **Android Auto** with a sideloaded app: in the Android Auto settings on your phone, tap *Version* about ten times to turn on developer mode. Then, from the ⋮ menu, open *Developer settings* and turn on **Unknown sources**.
 
@@ -74,4 +81,6 @@ To build it yourself, you need the JDK 17 and the Android SDK:
 ./gradlew testDebugUnitTest assembleRelease
 ```
 
-Built with Kotlin, Jetpack Compose (Material 3), Media3 (ExoPlayer + MediaLibraryService), OkHttp and Coil. Requires Android 8.0 or newer.
+Built with Kotlin, Jetpack Compose (Material 3), Media3 (ExoPlayer, MediaLibraryService and offline downloads), OkHttp, Coil and WorkManager. Requires Android 8.0 or newer.
+
+The typeface is [Instrument Sans](https://github.com/Instrument/instrument-sans), under the SIL Open Font License ([`licenses/InstrumentSans-OFL.txt`](licenses/InstrumentSans-OFL.txt)).

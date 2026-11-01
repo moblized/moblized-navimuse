@@ -260,6 +260,27 @@ def settings_and_dark():
     shot("19-launcher")
 
 
+def downloads():
+    # The emulator's network may count as mobile data, so let downloads use any connection.
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Home")
+    tap(desc="Settings")
+    tap_node(scroll_to("Download on Wi-Fi only"))
+    back()
+    tap(text="Collection")
+    tap(text="Albums")
+    tap(text="Square Album")
+    tap(desc="Download")
+    wait_for(desc="Remove download", timeout=90)
+    shot("20-album-downloaded")
+    back()
+    back()
+    tap(text="Downloads")
+    wait_for(text="On this phone")
+    shot("21-downloads")
+
+
 def background_playback():
     # Music should keep playing with the app in the background.
     out = adb("shell", "dumpsys", "media_session")
@@ -278,6 +299,7 @@ for name, fn in [
     ("search", search),
     ("album and artist pages", album_and_artist),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
+    ("download an album for offline play", downloads),
     ("background playback", background_playback),
 ]:
     ok = step(name, fn) and ok
