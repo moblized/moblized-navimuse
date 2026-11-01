@@ -138,16 +138,21 @@ def login():
 
 
 def library():
-    tap(text="Library")
-    wait_for(text="Albums")
+    tap(text="Collection")
+    wait_for(text="My collection")
+    shot("03-collection")
+    tap(text="Albums")
+    wait_for(text="Square Album")
     time.sleep(3)
-    shot("03-library-albums")
+    shot("03b-albums")
+    back()
     tap(text="Artists")
     wait_for(text="Test Artist")
-    shot("04-library-artists")
+    shot("04-artists")
+    back()
     tap(text="Playlists")
     wait_for(text="Chill_automatic")
-    shot("05-library-playlists")
+    shot("05-playlists")
 
 
 def keep_copy():
@@ -188,9 +193,21 @@ def now_playing():
 
 
 def audiomuse_tab():
-    tap(text="AudioMuse")
-    wait_for(text="Song path")
-    shot("12-audiomuse")
+    tap(text="Mixes")
+    wait_for(text="Instant Mix")
+    shot("12-mixes")
+    scroll_to("Song path")
+
+
+def genres():
+    tap(text="Search")
+    wait_for(text="Browse genres")
+    shot("13a-genres")
+    tap(text="Ambient")
+    wait_for(text="Shuffle Ambient")
+    time.sleep(2)
+    shot("13b-genre")
+    back()
 
 
 def search():
@@ -203,16 +220,17 @@ def search():
 
 
 def album_and_artist():
-    tap(text="Library")
+    tap(text="Collection")
     tap(text="Albums")
     tap(text="Square Album")
-    wait_for(text="Instant Mix")
+    wait_for(desc="Instant Mix")
     time.sleep(2)
     shot("14-album")
     tap(text="Other Artist")
     wait_for(text="Artist radio")
     time.sleep(2)
     shot("15-artist")
+    back()
     back()
     back()
 
@@ -251,11 +269,12 @@ def background_playback():
 ok = True
 for name, fn in [
     ("log in", login),
-    ("library tabs", library),
+    ("collection", library),
     ("keep a copy of an _automatic playlist", keep_copy),
     ("play a song + now-playing report", play),
     ("now playing screen and queue", now_playing),
-    ("AudioMuse tab", audiomuse_tab),
+    ("Mixes tab", audiomuse_tab),
+    ("genres", genres),
     ("search", search),
     ("album and artist pages", album_and_artist),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
