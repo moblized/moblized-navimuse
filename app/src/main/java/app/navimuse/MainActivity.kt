@@ -41,7 +41,8 @@ class MainActivity : ComponentActivity() {
                 .build()
         }
 
-        handleIntent(intent)
+        // Only on a fresh start: after a rotation the same intent comes back and was already handled.
+        if (savedInstanceState == null) handleIntent(intent)
 
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
