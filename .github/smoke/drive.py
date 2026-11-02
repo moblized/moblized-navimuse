@@ -121,6 +121,8 @@ def step(name, fn):
 
 def login():
     adb("install", "-r", APK, check=True, timeout=180)
+    # Answer the notification prompt up front so it never covers a button mid-test.
+    adb("shell", "pm", "grant", "app.navimuse", "android.permission.POST_NOTIFICATIONS")
     adb("logcat", "-c")
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity", check=True)
     wait_for(text="Connect", timeout=60)
@@ -170,9 +172,10 @@ def keep_copy():
 
 def play():
     tap(text="Road trip")
-    wait_for(text="Sine Song", contains=True)
+    wait_for(text="Road trip")
     shot("08-playlist")
-    tap(text="Sine Song 1")
+    # The playlist header is tall; scroll the song into view first.
+    tap_node(scroll_to("Sine Song 1"))
     wait_for(desc="Pause", timeout=30)
     time.sleep(4)
     shot("09-playing")
