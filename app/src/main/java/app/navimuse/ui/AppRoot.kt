@@ -161,6 +161,11 @@ fun AppRoot(vm: AppViewModel) {
             pickPlaylistFor = { playlistPickFor = it },
             saveAsPlaylist = { songs, name -> saveFor = songs to name },
             askNotifications = { askNotifications() },
+            selectTab = { t ->
+                showPlayer = false
+                tab = t
+                stack.clear()
+            },
         )
     }
 

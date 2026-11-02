@@ -24,6 +24,9 @@ import app.navimuse.net.SubsonicClient
 import app.navimuse.playback.Dolby
 import app.navimuse.playback.PlayerUiState
 import app.navimuse.playback.Streaming
+import app.navimuse.ui.symfonium.AppStyle
+import app.navimuse.ui.symfonium.NowPlayingStyle
+import app.navimuse.ui.symfonium.SymfoniumStyles
 import app.navimuse.ui.theme.CustomTheme
 import app.navimuse.ui.theme.CustomThemes
 import app.navimuse.ui.theme.ThemeFormatException
@@ -332,6 +335,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     val themes: StateFlow<List<CustomTheme>> = CustomThemes.all
 
+    /** Symfonium now-playing and application styles in use. */
+    val nowPlayingStyle: StateFlow<NowPlayingStyle?> = SymfoniumStyles.nowPlaying
+    val appStyle: StateFlow<AppStyle?> = SymfoniumStyles.app
+
+    fun removeNowPlayingStyle() {
+        SymfoniumStyles.removeNowPlaying()
+        say("Back to NaviMuse's playing screen")
+    }
+
+    fun removeAppStyle() {
+        SymfoniumStyles.removeApp()
+        say("Back to NaviMuse's layout")
+    }
+
+    /** Installs a theme or style file of any kind Symfonium shares. */
+    private fun importAny(text: String, fileName: String) {
+        if (SymfoniumStyles.typeOf(text) != null) {
+            val name = SymfoniumStyles.install(text)
+            say("Using \"$name\"")
+        } else {
+            addTheme(CustomThemes.parse(text, fileName))
+        }
+    }
+
     fun useTheme(id: String?) = updateSettings { it.copy(themeId = id) }
 
     /** A Symfonium icon pack ("<package>/<pack id>"), or null for NaviMuse's own icons. */
@@ -362,7 +389,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         ?: throw ThemeFormatException("Couldn't open that file.")
                     name to String(bytes, Charsets.UTF_8)
                 }
-                addTheme(CustomThemes.parse(text, name))
+                importAny(text, name)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -385,7 +412,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     String(bytes, Charsets.UTF_8)
                 }
             }
-            addTheme(CustomThemes.parse(text, url.removeSuffix("/download").substringAfterLast('/')))
+            importAny(text, url.removeSuffix("/download").substringAfterLast('/'))
         }
     }
 

@@ -52,11 +52,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.icons.IconPacks
+import app.navimuse.ui.symfonium.SymfoniumStyles
 import app.navimuse.ui.components.ActionPill
 import app.navimuse.ui.theme.CustomTheme
 import app.navimuse.ui.theme.isDark
 
-private const val SYMFONIUM_THEMES = "https://styles.symfonium.app/styles?type=color_theme"
+private const val SYMFONIUM_THEMES = "https://styles.symfonium.app/"
 
 /**
  * Colour themes: NaviMuse's own, or ones imported from Symfonium (Symfonium Styles, the
@@ -100,9 +101,11 @@ fun ThemeSettings(vm: AppViewModel) {
             onRemove = { removing = t },
         )
     }
+    StyleRows(vm)
     Text(
-        "Use colour themes made for Symfonium, from Symfonium Styles or the Symfonium forum, or a Material Theme Builder export. " +
-            "Each theme has light and dark colours and follows the light or dark setting above.",
+        "Import colour themes, now-playing styles and full app styles made for Symfonium (from Symfonium Styles or the Symfonium forum), " +
+            "or a Material Theme Builder export. Colour themes follow the light or dark setting above. " +
+            "Styles bring their text lines, layout and home sections; settings only Symfonium understands are skipped.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -125,7 +128,7 @@ fun ThemeSettings(vm: AppViewModel) {
         modifier = Modifier.padding(horizontal = 4.dp),
     ) {
         Icon(Icons.Filled.Palette, null, modifier = Modifier.size(18.dp))
-        Text("  Browse Symfonium colour themes")
+        Text("  Browse Symfonium Styles")
     }
 
     if (linkDialog) {
@@ -285,5 +288,39 @@ private fun PackRow(name: String, selected: Boolean, onSelect: () -> Unit) {
         RadioButton(selected = selected, onClick = onSelect)
         Spacer(Modifier.width(8.dp))
         Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** The Symfonium now-playing and app styles in use, each with a way back to NaviMuse's own. */
+@Composable
+private fun StyleRows(vm: AppViewModel) {
+    val nowPlaying by vm.nowPlayingStyle.collectAsState()
+    val app by vm.appStyle.collectAsState()
+    val ownNowPlaying = remember(nowPlaying) { SymfoniumStyles.ownNowPlayingName() }
+    if (app == null && ownNowPlaying == null) return
+    Text(
+        "Symfonium styles",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+    )
+    app?.let { a ->
+        StyleRow("App style", a.name) { vm.removeAppStyle() }
+    }
+    ownNowPlaying?.let { name ->
+        StyleRow("Now playing style", name) { vm.removeNowPlayingStyle() }
+    }
+}
+
+@Composable
+private fun StyleRow(kind: String, name: String, onRemove: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(kind, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        TextButton(onClick = onRemove) { Text("Remove") }
     }
 }

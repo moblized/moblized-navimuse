@@ -126,6 +126,8 @@ class UiActions(
     val saveAsPlaylist: (songs: List<Song>, suggestedName: String) -> Unit,
     /** Asks once for permission to show download and update notifications (Android 13+). */
     val askNotifications: () -> Unit = {},
+    /** Switches to a bottom tab, closing any open page. */
+    val selectTab: (app.navimuse.ui.Tab) -> Unit = {},
 )
 
 val LocalUi = staticCompositionLocalOf<UiActions> { error("UiActions not provided") }
@@ -179,13 +181,20 @@ fun CoverFill(
     shape: Shape = ArtShape,
     placeholder: ImageVector = Icons.Filled.Album,
     seed: String? = null,
+    /** Show the whole picture instead of filling the square. */
+    fit: Boolean = false,
 ) {
     val vm = LocalUi.current.vm
     val url = remember(coverArt) { vm.coverUrl(coverArt, 900) }
     Box(modifier.clip(shape)) {
-        ArtPlaceholder(seed ?: coverArt.orEmpty(), placeholder, Modifier.fillMaxSize())
+        if (!fit) ArtPlaceholder(seed ?: coverArt.orEmpty(), placeholder, Modifier.fillMaxSize())
         if (url != null) {
-            AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = if (fit) ContentScale.Fit else ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -551,6 +560,17 @@ fun PlaylistRow(playlist: Playlist, modifier: Modifier = Modifier, onClick: () -
                 AudioMuseBadge()
             }
         }
+    }
+}
+
+/** A playlist in a sideways shelf. */
+@Composable
+fun PlaylistCard(playlist: Playlist, modifier: Modifier = Modifier, width: Dp = 156.dp, onClick: () -> Unit) {
+    Column(modifier.width(width).clickable(onClick = onClick)) {
+        Cover(playlist.coverArt, size = width, placeholder = Icons.AutoMirrored.Filled.QueueMusic, seed = playlist.name)
+        Spacer(Modifier.height(8.dp))
+        Text(playlist.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("${playlist.songCount} tracks", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
 }
 

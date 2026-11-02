@@ -1,5 +1,20 @@
 package app.navimuse.ui.screens
 
+import android.os.Build
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import app.navimuse.net.Song
+import app.navimuse.playback.PlayerUiState
+import app.navimuse.ui.symfonium.NowPlayingStyle
+import app.navimuse.ui.symfonium.NpElement
+import app.navimuse.ui.symfonium.StyledLine
+import app.navimuse.ui.symfonium.songFields
+import app.navimuse.ui.theme.ArtShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -115,11 +130,25 @@ private fun rememberPosition(vm: AppViewModel, playing: Boolean, everyMs: Long =
 @Composable
 fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
     val state by vm.playerState.collectAsState()
+    val style by vm.nowPlayingStyle.collectAsState()
     val current = state.current ?: return
     val song = current.song
     val pos = rememberPosition(vm, state.isPlaying)
     val progress = if (state.durationMs > 0) (pos.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+    val st = style
+    val floating = st?.miniFloating == true
+    val shape = if (floating) RoundedCornerShape(percent = st!!.miniCornerPercent.coerceAtLeast(8)) else RectangleShape
+    val fields = songFields(song, state, pos, null)
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = shape,
+        shadowElevation = if (floating) 6.dp else 0.dp,
+        modifier = if (floating) {
+            Modifier.padding(start = (st!!.miniMarginH + 8).dp, end = (st.miniMarginH + 8).dp, bottom = (st.miniMarginBottom + 6).dp)
+        } else {
+            Modifier
+        },
+    ) {
         Column {
             Row(
                 Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
@@ -127,14 +156,31 @@ fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
             ) {
                 // Swipe the song left or right to skip, like on the playing screen.
                 Row(
-                    Modifier.weight(1f).swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() }),
+                    Modifier.weight(1f).let {
+                        if (st?.swipeToSkip == false) it else it.swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() })
+                    },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Cover(song.coverArt, size = 44.dp, seed = song.album.ifBlank { song.title })
+                    Cover(
+                        song.coverArt,
+                        size = 44.dp,
+                        seed = song.album.ifBlank { song.title },
+                        shape = st?.let { RoundedCornerShape(percent = it.miniThumbCornerPercent) } ?: ArtShape,
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(song.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(song.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val title = st?.miniTitle
+                        val subtitle = st?.miniSubtitle
+                        if (title != null) {
+                            StyledLine(title.copy(maxLines = 1), fields, MaterialTheme.typography.titleSmall)
+                        } else {
+                            Text(song.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (subtitle != null) {
+                            StyledLine(subtitle.copy(maxLines = 1), fields, MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Text(song.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
                 Box(contentAlignment = Alignment.Center) {
@@ -158,16 +204,14 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
     val state by vm.playerState.collectAsState()
     val info by vm.serverInfo.collectAsState()
     val stars by vm.stars.collectAsState()
+    val style by vm.nowPlayingStyle.collectAsState()
     val current = state.current ?: return
     val song = current.song
     var showLyrics by remember { mutableStateOf(false) }
-    val pos = rememberPosition(vm, state.isPlaying, everyMs = if (showLyrics) 200 else 500)
-    var dragging by remember { mutableStateOf(false) }
-    var dragValue by remember { mutableFloatStateOf(0f) }
+    val pos = rememberPosition(vm, state.isPlaying, everyMs = if (showLyrics || style != null) 250 else 500)
     var showQueue by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     val starred = stars[song.id] ?: song.starred
-    val duration = state.durationMs.coerceAtLeast(1)
     val scheme = MaterialTheme.colorScheme
     val art = rememberArtColor(song.coverArt, song.album.ifBlank { song.title })
     val stage = stageColor(art, scheme.isDark)
@@ -176,18 +220,38 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
     val special = state.formatLabel ?: remember(song.id, dolbyKnown) { Dolby.labelFor(song) }
     val quality = special ?: remember(song.id) { qualityLabel(song, vm.streamingKbps(song)) }
     val soundEffects = rememberSoundEffects()
+    val st = style
+    val next = state.queue.getOrNull((current.index) + 1)?.song
+    val fields = songFields(song, state, pos, quality, next)
 
     Surface(Modifier.fillMaxSize(), color = scheme.background) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to stage, 0.8f to scheme.background))) {
+            if (st != null && st.backgroundBlur > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // A style's blurred-artwork background.
+                CoverFill(
+                    song.coverArt,
+                    Modifier.fillMaxSize().blur((st.backgroundBlur / 2).coerceIn(8, 60).dp),
+                    shape = RectangleShape,
+                    seed = song.album.ifBlank { song.title },
+                )
+                Box(Modifier.fillMaxSize().background(scheme.background.copy(alpha = 0.55f)))
+            }
             Column(
                 Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
             ) {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onClose) { Icon(Icons.Filled.KeyboardArrowDown, "Close") }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Now playing", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                        if (song.album.isNotBlank()) {
-                            Text(song.album, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                        val top = st?.topTitle
+                        val topSub = st?.topSubtitle
+                        if (top != null || topSub != null) {
+                            top?.let { StyledLine(it.copy(maxLines = 1), fields, MaterialTheme.typography.titleSmall) }
+                            topSub?.let { StyledLine(it.copy(maxLines = 1), fields, MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant) }
+                        } else {
+                            Text("Now playing", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                            if (song.album.isNotBlank()) {
+                                Text(song.album, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                            }
                         }
                     }
                     Box {
@@ -209,127 +273,36 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                     Spacer(Modifier.height(16.dp))
                 } else {
                     Spacer(Modifier.weight(0.5f))
-                    // Swipe the art left for the next song, right for the previous one.
-                    CoverFill(
-                        song.coverArt,
-                        Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .fillMaxWidth()
-                            .widthIn(max = 440.dp)
-                            .aspectRatio(1f)
-                            .swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() }),
-                        shape = RoundedCornerShape(6.dp),
-                        seed = song.album.ifBlank { song.title },
-                    )
+                    NowPlayingArt(vm, song, state.isPlaying, st)
                     Spacer(Modifier.weight(0.5f))
                 }
 
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        // Tap the song's name to open its album.
-                        Text(
-                            song.title,
-                            style = MaterialTheme.typography.headlineMedium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable(enabled = song.albumId != null) {
-                                song.albumId?.let { ui.navigate(Route.AlbumPage(it)) }
-                            },
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            song.artist,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable(enabled = song.artistId != null) {
-                                song.artistId?.let { ui.navigate(Route.ArtistPage(it)) }
-                            },
-                        )
-                    }
-                    IconButton(onClick = { vm.setStar(song.id, SubsonicClient.StarKind.SONG, !starred) }) {
-                        Icon(
-                            if (starred) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            if (starred) "Remove from favourites" else "Add to favourites",
-                            tint = if (starred) scheme.accent else scheme.onSurface,
-                        )
-                    }
-                }
-                if (quality != null) {
+                val elements = st?.elements
+                if (elements == null) {
+                    TitleBlock(vm, song, starred, quality)
+                    Spacer(Modifier.height(14.dp))
+                    SeekBar(vm, state, pos, scale = st?.sliderScale ?: 1f, showTimes = st?.sliderTimes ?: true)
                     Spacer(Modifier.height(10.dp))
-                    QualityBadge(quality, strong = quality == Dolby.ATMOS)
-                }
-                Spacer(Modifier.height(14.dp))
-
-                val sliderValue = if (dragging) dragValue else (pos.toFloat() / duration).coerceIn(0f, 1f)
-                Slider(
-                    value = sliderValue,
-                    onValueChange = {
-                        dragging = true
-                        dragValue = it
-                    },
-                    onValueChangeFinished = {
-                        vm.player.seekTo((dragValue * duration).toLong())
-                        dragging = false
-                    },
-                    thumb = {
-                        Box(Modifier.size(if (dragging) 16.dp else 12.dp).background(scheme.onSurface, CircleShape))
-                    },
-                    track = {
-                        Box(Modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(scheme.onSurface.copy(alpha = 0.22f))) {
-                            Box(Modifier.fillMaxWidth(sliderValue).fillMaxHeight().background(scheme.onSurface))
-                        }
-                    },
-                    modifier = Modifier.height(28.dp),
-                )
-                Row(Modifier.fillMaxWidth()) {
-                    val shownPos = if (dragging) (dragValue * duration).toLong() else pos
-                    Text(formatDuration((shownPos / 1000).toInt()), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                    Spacer(Modifier.weight(1f))
-                    Text(formatDuration((state.durationMs / 1000).toInt()), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = { vm.player.setShuffle(!state.shuffle) }) {
-                        Icon(
-                            Icons.Filled.Shuffle,
-                            "Shuffle",
-                            tint = if (state.shuffle) scheme.accent else scheme.onSurfaceVariant,
-                            key = if (state.shuffle) "playback.shuffle.on" else "playback.shuffle",
-                        )
-                    }
-                    IconButton(onClick = { vm.player.previous() }, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Filled.SkipPrevious, "Previous", modifier = Modifier.size(38.dp))
-                    }
-                    Box(contentAlignment = Alignment.Center) {
-                        FilledIconButton(onClick = { vm.player.togglePlay() }, modifier = Modifier.size(72.dp)) {
-                            Icon(
-                                if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                if (state.isPlaying) "Pause" else "Play",
-                                modifier = Modifier.size(38.dp),
+                    ControlButtons(vm, state)
+                } else {
+                    // A Symfonium style's text lines, seek bar and buttons, in its order.
+                    elements.forEach { el ->
+                        when (el) {
+                            is NpElement.Text -> StyledLine(
+                                el.line,
+                                fields,
+                                MaterialTheme.typography.titleMedium,
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(enabled = song.albumId != null) {
+                                    song.albumId?.let { ui.navigate(Route.AlbumPage(it)) }
+                                },
                             )
+                            NpElement.Slider -> SeekBar(vm, state, pos, scale = st.sliderScale, showTimes = st.sliderTimes)
+                            NpElement.Buttons -> {
+                                Spacer(Modifier.height(6.dp))
+                                ControlButtons(vm, state)
+                                Spacer(Modifier.height(6.dp))
+                            }
                         }
-                        if (state.buffering) CircularProgressIndicator(Modifier.size(80.dp), strokeWidth = 2.dp, color = scheme.accent)
-                    }
-                    IconButton(onClick = { vm.player.next() }, enabled = state.hasNext, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Filled.SkipNext, "Next", modifier = Modifier.size(38.dp))
-                    }
-                    IconButton(onClick = { vm.player.cycleRepeat() }) {
-                        Icon(
-                            if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
-                            "Repeat",
-                            tint = if (state.repeatMode != Player.REPEAT_MODE_OFF) scheme.accent else scheme.onSurfaceVariant,
-                            key = when (state.repeatMode) {
-                                Player.REPEAT_MODE_ONE -> "playback.repeat.one.on"
-                                Player.REPEAT_MODE_ALL -> "playback.repeat.on"
-                                else -> "playback.repeat"
-                            },
-                        )
                     }
                 }
                 Spacer(Modifier.height(14.dp))
@@ -339,7 +312,11 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                         PlayerAction("Lyrics", Icons.Filled.FormatQuote, active = showLyrics) { showLyrics = !showLyrics }
                     }
                     PlayerAction("Instant Mix", Icons.Filled.AutoAwesome) { vm.instantMix(song) }
-                    if (info?.sonicSimilarity == true) {
+                    if (elements != null) {
+                        PlayerAction(if (starred) "Favourite" else "Favourite", if (starred) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, active = starred) {
+                            vm.setStar(song.id, SubsonicClient.StarKind.SONG, !starred)
+                        }
+                    } else if (info?.sonicSimilarity == true) {
                         PlayerAction("Similar", Icons.Filled.Waves) { ui.navigate(Route.Similar(song)) }
                     }
                     PlayerAction("Add to…", Icons.AutoMirrored.Filled.PlaylistAdd) { ui.pickPlaylistFor(listOf(song)) }
@@ -350,6 +327,165 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
     }
 
     if (showQueue) QueueSheet(vm, onDismiss = { showQueue = false })
+}
+
+/** The cover art: swipe for the next or previous song; a style can round, inset, uncrop or spin it. */
+@Composable
+private fun ColumnScope.NowPlayingArt(vm: AppViewModel, song: Song, playing: Boolean, st: NowPlayingStyle?) {
+    val rotation = remember { Animatable(0f) }
+    LaunchedEffect(playing, st?.coverRotates) {
+        if (playing && st?.coverRotates == true) {
+            while (true) {
+                rotation.animateTo(rotation.value + 360f, tween(12_000, easing = LinearEasing))
+            }
+        }
+    }
+    val shape = when {
+        st?.coverRotates == true -> CircleShape
+        st?.coverCornerPercent != null -> RoundedCornerShape(percent = st.coverCornerPercent)
+        else -> RoundedCornerShape(6.dp)
+    }
+    CoverFill(
+        song.coverArt,
+        Modifier
+            .align(Alignment.CenterHorizontally)
+            .padding(horizontal = (st?.coverMarginH ?: 0).dp)
+            .fillMaxWidth()
+            .widthIn(max = 440.dp)
+            .aspectRatio(1f)
+            .swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() })
+            .graphicsLayer { rotationZ = if (st?.coverRotates == true) rotation.value else 0f },
+        shape = shape,
+        seed = song.album.ifBlank { song.title },
+        fit = st?.coverNoCrop == true && st.coverRotates.not(),
+    )
+}
+
+/** Title (tap for the album), artist (tap for the artist), heart and audio quality. */
+@Composable
+private fun TitleBlock(vm: AppViewModel, song: Song, starred: Boolean, quality: String?) {
+    val ui = LocalUi.current
+    val scheme = MaterialTheme.colorScheme
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            // Tap the song's name to open its album.
+            Text(
+                song.title,
+                style = MaterialTheme.typography.headlineMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable(enabled = song.albumId != null) {
+                    song.albumId?.let { ui.navigate(Route.AlbumPage(it)) }
+                },
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                song.artist,
+                style = MaterialTheme.typography.titleMedium,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable(enabled = song.artistId != null) {
+                    song.artistId?.let { ui.navigate(Route.ArtistPage(it)) }
+                },
+            )
+        }
+        IconButton(onClick = { vm.setStar(song.id, SubsonicClient.StarKind.SONG, !starred) }) {
+            Icon(
+                if (starred) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                if (starred) "Remove from favourites" else "Add to favourites",
+                tint = if (starred) scheme.accent else scheme.onSurface,
+            )
+        }
+    }
+    if (quality != null) {
+        Spacer(Modifier.height(10.dp))
+        QualityBadge(quality, strong = quality == Dolby.ATMOS)
+    }
+}
+
+@Composable
+private fun SeekBar(vm: AppViewModel, state: PlayerUiState, pos: Long, scale: Float, showTimes: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    var dragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(0f) }
+    val duration = state.durationMs.coerceAtLeast(1)
+    val sliderValue = if (dragging) dragValue else (pos.toFloat() / duration).coerceIn(0f, 1f)
+    Slider(
+        value = sliderValue,
+        onValueChange = {
+            dragging = true
+            dragValue = it
+        },
+        onValueChangeFinished = {
+            vm.player.seekTo((dragValue * duration).toLong())
+            dragging = false
+        },
+        thumb = {
+            Box(Modifier.size(((if (dragging) 16 else 12) * scale).dp).background(scheme.onSurface, CircleShape))
+        },
+        track = {
+            Box(Modifier.fillMaxWidth().height((3 * scale).dp).clip(CircleShape).background(scheme.onSurface.copy(alpha = 0.22f))) {
+                Box(Modifier.fillMaxWidth(sliderValue).fillMaxHeight().background(scheme.onSurface))
+            }
+        },
+        modifier = Modifier.height((28 * scale).coerceAtLeast(24f).dp),
+    )
+    if (showTimes) {
+        Row(Modifier.fillMaxWidth()) {
+            val shownPos = if (dragging) (dragValue * duration).toLong() else pos
+            Text(formatDuration((shownPos / 1000).toInt()), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
+            Text(formatDuration((state.durationMs / 1000).toInt()), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ControlButtons(vm: AppViewModel, state: PlayerUiState) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = { vm.player.setShuffle(!state.shuffle) }) {
+            Icon(
+                Icons.Filled.Shuffle,
+                "Shuffle",
+                tint = if (state.shuffle) scheme.accent else scheme.onSurfaceVariant,
+                key = if (state.shuffle) "playback.shuffle.on" else "playback.shuffle",
+            )
+        }
+        IconButton(onClick = { vm.player.previous() }, modifier = Modifier.size(56.dp)) {
+            Icon(Icons.Filled.SkipPrevious, "Previous", modifier = Modifier.size(38.dp))
+        }
+        Box(contentAlignment = Alignment.Center) {
+            FilledIconButton(onClick = { vm.player.togglePlay() }, modifier = Modifier.size(72.dp)) {
+                Icon(
+                    if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    if (state.isPlaying) "Pause" else "Play",
+                    modifier = Modifier.size(38.dp),
+                )
+            }
+            if (state.buffering) CircularProgressIndicator(Modifier.size(80.dp), strokeWidth = 2.dp, color = scheme.accent)
+        }
+        IconButton(onClick = { vm.player.next() }, enabled = state.hasNext, modifier = Modifier.size(56.dp)) {
+            Icon(Icons.Filled.SkipNext, "Next", modifier = Modifier.size(38.dp))
+        }
+        IconButton(onClick = { vm.player.cycleRepeat() }) {
+            Icon(
+                if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                "Repeat",
+                tint = if (state.repeatMode != Player.REPEAT_MODE_OFF) scheme.accent else scheme.onSurfaceVariant,
+                key = when (state.repeatMode) {
+                    Player.REPEAT_MODE_ONE -> "playback.repeat.one.on"
+                    Player.REPEAT_MODE_ALL -> "playback.repeat.on"
+                    else -> "playback.repeat"
+                },
+            )
+        }
+    }
 }
 
 @Composable

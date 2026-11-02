@@ -74,6 +74,7 @@ import app.navimuse.ui.components.PlaylistRow
 import app.navimuse.ui.components.SectionHeader
 import app.navimuse.ui.components.SongRow
 import app.navimuse.ui.components.rememberLoad
+import app.navimuse.ui.symfonium.Shortcut
 import kotlinx.coroutines.delay
 
 /** Your library as a short menu, then what you played lately. */
@@ -81,14 +82,17 @@ import kotlinx.coroutines.delay
 fun CollectionScreen(vm: AppViewModel) {
     val ui = LocalUi.current
     val recent = rememberLoad("collection-recent") { vm.api().albumList(AlbumListType.RECENT, 12) }
+    val appStyle by vm.appStyle.collectAsState()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { PageHeader("My collection") }
         item { Spacer(Modifier.size(8.dp)) }
-        item { MenuRow("Playlists", Icons.AutoMirrored.Filled.QueueMusic) { ui.navigate(Route.Playlists) } }
-        item { MenuRow("Albums", Icons.Filled.Album) { ui.navigate(Route.Albums) } }
-        item { MenuRow("Artists", Icons.Filled.Person) { ui.navigate(Route.Artists) } }
-        item { MenuRow("Favourites", Icons.Filled.Favorite) { ui.navigate(Route.Favourites) } }
-        item { MenuRow("Downloads", Icons.Filled.OfflinePin) { ui.navigate(Route.Downloads) } }
+        // A Symfonium app style's library menu order; NaviMuse's own otherwise.
+        val styled = appStyle?.library.orEmpty().filter { it in menuEntries }
+        val menu = (styled.ifEmpty { listOf(Shortcut.PLAYLISTS, Shortcut.ALBUMS, Shortcut.ARTISTS) } +
+            listOf(Shortcut.FAVOURITES, Shortcut.DOWNLOADS)).distinct()
+        menu.forEach { sc ->
+            item(key = "menu-$sc") { MenuRow(sc.label, shortcutIcon(sc)) { openShortcut(vm, ui, sc) } }
+        }
         val albums = recent.value.orEmpty()
         if (albums.isNotEmpty()) {
             item { SectionHeader("Recently played") }
@@ -96,6 +100,8 @@ fun CollectionScreen(vm: AppViewModel) {
         }
     }
 }
+
+private val menuEntries = setOf(Shortcut.PLAYLISTS, Shortcut.ALBUMS, Shortcut.ARTISTS, Shortcut.GENRES, Shortcut.FAVOURITES, Shortcut.DOWNLOADS)
 
 @Composable
 private fun MenuRow(title: String, icon: ImageVector, onClick: () -> Unit) {
