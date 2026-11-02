@@ -186,6 +186,8 @@ def play():
 def now_playing():
     tap(text="Sine Song 1", last=True)  # the mini player, below the list
     wait_for(text="Now playing")
+    # Repeat the queue, so music is still playing when background playback is checked at the end.
+    tap(desc="Repeat")
     time.sleep(2)
     shot("10-now-playing")
     tap(text="Queue")

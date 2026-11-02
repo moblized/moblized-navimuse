@@ -310,20 +310,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun checkDolby(albumId: String, songs: List<Song>) {
         if (Dolby.albumChecked(albumId) || songs.isEmpty()) return
-        songs.firstNotNullOfOrNull { Dolby.hint(it) }?.let {
-            Dolby.rememberAlbum(albumId, it)
-            return
-        }
+        // Navidrome reports channels (6 for 5.1) but not the codec, so a surround .m4a may be
+        // Dolby Atmos, Dolby Digital Plus or plain multichannel AAC: look inside to name it.
+        val fromServer = songs.firstNotNullOfOrNull { Dolby.hint(it) }
         val sample = songs.firstOrNull { Dolby.canSniff(it) }
         if (sample == null) {
-            Dolby.rememberAlbum(albumId, null)
+            Dolby.rememberAlbum(albumId, fromServer)
             return
         }
         viewModelScope.launch {
             runCatching {
                 val head = api().peek(sample.id, fromEnd = false)
                 Dolby.sniff(head) ?: if (Dolby.needsTail(head)) Dolby.sniff(api().peek(sample.id, fromEnd = true)) else null
-            }.onSuccess { Dolby.rememberAlbum(albumId, it) }
+            }.onSuccess { Dolby.rememberAlbum(albumId, it ?: fromServer) }
         }
     }
 
