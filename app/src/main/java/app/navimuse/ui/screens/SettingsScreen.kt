@@ -182,6 +182,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
+            ThemeSettings(vm)
 
             HorizontalDivider(Modifier.padding(top = 8.dp))
             ListItem(

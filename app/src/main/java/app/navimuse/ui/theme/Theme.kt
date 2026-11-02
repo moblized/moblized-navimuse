@@ -10,6 +10,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -189,10 +191,61 @@ object Tone {
     val muted: Color @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.onSurfaceVariant
 }
 
+/**
+ * The app's colours with an imported Symfonium / Material theme laid over them. The theme's
+ * primary colour becomes the app's accent too, as it is in Symfonium. Roles the theme leaves
+ * out are worked out from its surface and text colours.
+ */
+fun themedScheme(base: ColorScheme, roles: Map<String, Long>, dark: Boolean): ColorScheme {
+    fun c(role: String): Color? = roles[role]?.let { Color(it) }
+    val surface = c("surface") ?: c("background") ?: base.surface
+    val onSurface = c("onSurface") ?: c("onBackground") ?: base.onSurface
+    fun step(amount: Float) = lerp(surface, onSurface, amount)
+    val primary = c("primary") ?: base.primary
+    val onPrimary = c("onPrimary") ?: if (primary.luminance() > 0.5f) Color.Black else Color.White
+    return base.copy(
+        primary = primary,
+        onPrimary = onPrimary,
+        primaryContainer = c("primaryContainer") ?: base.primaryContainer,
+        onPrimaryContainer = c("onPrimaryContainer") ?: base.onPrimaryContainer,
+        inversePrimary = c("inversePrimary") ?: base.inversePrimary,
+        // The accent (what's playing, quality badges, active toggles) follows the theme's primary.
+        secondary = primary,
+        onSecondary = onPrimary,
+        secondaryContainer = c("secondaryContainer") ?: step(0.16f),
+        onSecondaryContainer = c("onSecondaryContainer") ?: onSurface,
+        tertiaryContainer = c("tertiaryContainer") ?: base.tertiaryContainer,
+        onTertiaryContainer = c("onTertiaryContainer") ?: base.onTertiaryContainer,
+        error = c("error") ?: base.error,
+        onError = c("onError") ?: base.onError,
+        errorContainer = c("errorContainer") ?: base.errorContainer,
+        onErrorContainer = c("onErrorContainer") ?: base.onErrorContainer,
+        background = c("background") ?: surface,
+        onBackground = c("onBackground") ?: onSurface,
+        surface = surface,
+        onSurface = onSurface,
+        surfaceVariant = c("surfaceVariant") ?: step(0.12f),
+        onSurfaceVariant = c("onSurfaceVariant") ?: lerp(onSurface, surface, 0.35f),
+        surfaceTint = Color.Transparent,
+        inverseSurface = c("inverseSurface") ?: onSurface,
+        inverseOnSurface = c("inverseOnSurface") ?: surface,
+        outline = c("outline") ?: step(0.45f),
+        outlineVariant = c("outlineVariant") ?: step(0.2f),
+        surfaceDim = c("surfaceDim") ?: surface,
+        surfaceBright = c("surfaceBright") ?: step(0.18f),
+        surfaceContainerLowest = c("surfaceContainerLowest") ?: lerp(surface, if (dark) Color.Black else Color.White, 0.5f),
+        surfaceContainerLow = c("surfaceContainerLow") ?: step(0.04f),
+        surfaceContainer = c("surfaceContainer") ?: step(0.07f),
+        surfaceContainerHigh = c("surfaceContainerHigh") ?: step(0.1f),
+        surfaceContainerHighest = c("surfaceContainerHighest") ?: step(0.14f),
+    )
+}
+
 @Composable
-fun AppTheme(dark: Boolean, content: @Composable () -> Unit) {
+fun AppTheme(dark: Boolean, custom: CustomTheme? = null, content: @Composable () -> Unit) {
+    val base = if (dark) DarkColors else LightColors
     MaterialTheme(
-        colorScheme = if (dark) DarkColors else LightColors,
+        colorScheme = if (custom == null) base else themedScheme(base, custom.roles(dark), dark),
         typography = AppTypography,
         shapes = AppShapes,
         content = content,

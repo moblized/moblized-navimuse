@@ -33,6 +33,8 @@ data class Settings(
     val autoUpdate: Boolean = true,
     /** Stream and download Dolby Atmos and surround songs untouched, so the phone decodes them. */
     val dolbyOriginal: Boolean = true,
+    /** Imported Symfonium / Material colour theme in use, or null for NaviMuse's own colours. */
+    val themeId: String? = null,
 )
 
 /** Saved logins and settings, in plain SharedPreferences (the secrets inside are encrypted). */
@@ -95,6 +97,7 @@ class Store(context: Context) {
         autoDownloadPlaylists = prefs.getStringSet("autoDownloadPlaylists", null)?.toSet().orEmpty(),
         autoUpdate = prefs.getBoolean("autoUpdate", true),
         dolbyOriginal = prefs.getBoolean("dolbyOriginal", true),
+        themeId = prefs.getString("customTheme", null),
     )
 
     fun saveSettings(s: Settings) {
@@ -110,6 +113,7 @@ class Store(context: Context) {
             .putStringSet("autoDownloadPlaylists", HashSet(s.autoDownloadPlaylists))
             .putBoolean("autoUpdate", s.autoUpdate)
             .putBoolean("dolbyOriginal", s.dolbyOriginal)
+            .putString("customTheme", s.themeId)
             .apply()
     }
 

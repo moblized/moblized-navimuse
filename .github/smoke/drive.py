@@ -298,6 +298,48 @@ def downloads():
     shot("21-downloads")
 
 
+NIGHT_DRIVE = {
+    "name": "Night Drive", "id": "", "imported": True,
+    "schemes": {
+        "light": {"primary": "#A6005C", "onPrimary": "#FFFFFF", "secondaryContainer": "#FFDEA0",
+                  "surface": "#FFF8FC", "onSurface": "#1F1826", "onSurfaceVariant": "#443A54",
+                  "outline": "#766B87", "surfaceContainer": "#F2E6F5", "surfaceContainerHigh": "#ECDFF0"},
+        "dark": {"primary": "#FF2E92", "onPrimary": "#4A0028", "secondaryContainer": "#593D00",
+                 "surface": "#150F1C", "onSurface": "#EEE3F5", "onSurfaceVariant": "#CBBEDD",
+                 "outline": "#9186A6", "surfaceContainerLow": "#1A1424", "surfaceContainer": "#1F1829",
+                 "surfaceContainerHigh": "#2A2235", "surfaceContainerHighest": "#352C41"},
+    },
+}
+
+
+def symfonium_theme():
+    # Serve a Symfonium-format colour theme from this machine (the emulator sees it as 10.0.2.2).
+    os.makedirs("theme-site", exist_ok=True)
+    with open("theme-site/night-drive.json", "w") as f:
+        json.dump(NIGHT_DRIVE, f)
+    server = subprocess.Popen(["python3", "-m", "http.server", "8088", "--directory", "theme-site"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        time.sleep(2)
+        adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+        time.sleep(2)
+        tap(text="Home")
+        tap(desc="Settings")
+        tap_node(scroll_to("Import link"))
+        wait_for(text="Import from a link")
+        tap(text="styles.symfonium.app/styles", contains=True)
+        type_text("http://10.0.2.2:8088/night-drive.json")
+        tap(text="Import")
+        wait_for(text="Night Drive", timeout=30)
+        time.sleep(2)
+        shot("23-theme-imported")
+        back()
+        time.sleep(2)
+        shot("24-home-night-drive")
+    finally:
+        server.terminate()
+
+
 def background_playback():
     # Music should keep playing with the app in the background.
     out = adb("shell", "dumpsys", "media_session")
@@ -318,6 +360,7 @@ for name, fn in [
     ("Dolby badge on a Dolby album", dolby_album),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
+    ("import a Symfonium colour theme", symfonium_theme),
     ("background playback", background_playback),
 ]:
     ok = step(name, fn) and ok

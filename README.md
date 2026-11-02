@@ -6,6 +6,8 @@ An Android music player for **Navidrome** with **AudioMuse-AI** mixes, built so 
 
 - **Your library:** home shelves (recently played, recently added, most played, discover), albums, artists, playlists, favourites, genres and search.
 - **Looks:** a black, Tidal-style layout where album art supplies the colour: album, playlist and now-playing pages are washed in the colour of their cover. Type is Instrument Sans. A light look is in Settings.
+- **Symfonium colour themes:** import colour themes made for Symfonium (from [Symfonium Styles](https://styles.symfonium.app/styles?type=color_theme), the Symfonium forum or Catppuccin) or exported from Material Theme Builder. Import the .json file, paste a Symfonium Styles link, or open a downloaded theme with NaviMuse. Symfonium's layout styles, now-playing styles and icon packs describe Symfonium's own screens, so they don't carry over.
+- **Dolby Atmos:** Atmos and surround songs always stream and download as the original file, so the phone's own Dolby decoder plays them. Atmos albums are found by reading a little of one track (Navidrome can't tell an Atmos .m4a from AAC) and get a Dolby Atmos badge. A Sound effects shortcut opens the phone's equalizer and effects (Dolby Atmos on Samsung).
 - **Now playing:** synced lyrics (when your files have them), the audio quality you're actually hearing, queue, Instant Mix and similar songs.
 - **Offline downloads:** download albums and playlists to play without a connection. Downloaded playlists stay in sync, and favourites can download automatically. Wi-Fi only by default. Removing a download only deletes the phone's copy.
 - **Automatic updates:** the app checks this repo's Releases twice a day, downloads new versions and installs them with one tap.

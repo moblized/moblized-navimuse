@@ -1,6 +1,8 @@
 package app.navimuse.ui
 
 import android.app.Application
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.navimuse.BlockedEvent
@@ -22,7 +24,14 @@ import app.navimuse.net.SubsonicClient
 import app.navimuse.playback.Dolby
 import app.navimuse.playback.PlayerUiState
 import app.navimuse.playback.Streaming
+import app.navimuse.ui.theme.CustomTheme
+import app.navimuse.ui.theme.CustomThemes
+import app.navimuse.ui.theme.ThemeFormatException
 import app.navimuse.update.Updater
+import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.Request
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +41,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+private const val MAX_THEME_BYTES = 1024 * 1024
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as NaviMuseApp
@@ -317,6 +328,75 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun audioSessionId(): Int = app.audioSessionId
+
+    // --- colour themes (Symfonium / Material Theme Builder) ----------------------------------
+
+    val themes: StateFlow<List<CustomTheme>> = CustomThemes.all
+
+    fun useTheme(id: String?) = updateSettings { it.copy(themeId = id) }
+
+    fun deleteTheme(theme: CustomTheme) {
+        if (settings.value.themeId == theme.id) useTheme(null)
+        CustomThemes.delete(theme.id)
+        say("Removed \"${theme.name}\"")
+    }
+
+    private fun addTheme(theme: CustomTheme) {
+        CustomThemes.save(theme)
+        useTheme(theme.id)
+        say("Using \"${theme.name}\"")
+    }
+
+    /** Imports a theme file picked on the phone or opened with NaviMuse. */
+    fun importTheme(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val (name, text) = withContext(Dispatchers.IO) {
+                    val resolver = app.contentResolver
+                    val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                        if (c.moveToFirst()) c.getString(0) else null
+                    } ?: uri.lastPathSegment.orEmpty()
+                    val bytes = resolver.openInputStream(uri)?.use { it.readNBytesCompat(MAX_THEME_BYTES) }
+                        ?: throw ThemeFormatException("Couldn't open that file.")
+                    name to String(bytes, Charsets.UTF_8)
+                }
+                addTheme(CustomThemes.parse(text, name))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                say(e.message ?: "Couldn't import that theme.")
+            }
+        }
+    }
+
+    /** Imports a theme from a Symfonium Styles page link or a direct link to a theme file. */
+    fun importThemeFromLink(link: String) {
+        val url = CustomThemes.downloadUrl(link) ?: run {
+            say("That isn't a link to a theme.")
+            return
+        }
+        action("Downloading theme…") {
+            val text = withContext(Dispatchers.IO) {
+                app.http.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                    if (!r.isSuccessful) throw IOException("The theme link answered ${r.code}.")
+                    val bytes = r.body?.byteStream()?.use { it.readNBytesCompat(MAX_THEME_BYTES) } ?: ByteArray(0)
+                    String(bytes, Charsets.UTF_8)
+                }
+            }
+            addTheme(CustomThemes.parse(text, url.removeSuffix("/download").substringAfterLast('/')))
+        }
+    }
+
+    private fun java.io.InputStream.readNBytesCompat(max: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        while (out.size() < max) {
+            val n = read(buf, 0, minOf(buf.size, max - out.size()))
+            if (n < 0) break
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
 
     suspend fun lyrics(song: Song): Lyrics? = api().lyrics(song.id)
 

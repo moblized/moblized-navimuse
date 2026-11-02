@@ -2,6 +2,7 @@ package app.navimuse
 
 import android.graphics.Color
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -9,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.core.content.IntentCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -17,6 +19,7 @@ import app.navimuse.ui.AppRoot
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.isDark
 import app.navimuse.ui.theme.AppTheme
+import app.navimuse.ui.theme.CustomThemes
 import app.navimuse.update.Updater
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
@@ -42,6 +45,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
+            val themes by CustomThemes.all.collectAsStateWithLifecycle()
             val dark = settings.isDark(isSystemInDarkTheme())
             SideEffect { darkTheme = dark }
             // Status and navigation bar icons follow the app's look, not the phone's.
@@ -53,7 +57,7 @@ class MainActivity : ComponentActivity() {
                 }
                 enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
             }
-            AppTheme(dark = dark) {
+            AppTheme(dark = dark, custom = themes.firstOrNull { it.id == settings.themeId }) {
                 AppRoot(vm)
             }
         }
@@ -64,12 +68,31 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    /** "Update ready" notification: install it. */
+    /**
+     * "Update ready" notification: install it. A colour theme file opened with (or shared to)
+     * NaviMuse: import it.
+     */
     private fun handleIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(Updater.EXTRA_INSTALL, false) == true) {
+        if (intent == null) return
+        if (intent.getBooleanExtra(Updater.EXTRA_INSTALL, false)) {
             intent.removeExtra(Updater.EXTRA_INSTALL)
             vm.installUpdate()
+            return
         }
+        when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data?.let { vm.importTheme(it) }
+            Intent.ACTION_SEND -> {
+                val stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                when {
+                    stream != null -> vm.importTheme(stream)
+                    text != null -> vm.importThemeFromLink(text)
+                }
+            }
+            else -> return
+        }
+        // Handled once; don't import again when the screen is recreated.
+        setIntent(Intent(this, MainActivity::class.java))
     }
 
     override fun onStart() {

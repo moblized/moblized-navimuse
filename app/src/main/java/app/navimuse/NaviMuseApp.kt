@@ -15,6 +15,7 @@ import app.navimuse.downloads.Downloads
 import app.navimuse.net.Song
 import app.navimuse.playback.Dolby
 import app.navimuse.playback.PlayerConnection
+import app.navimuse.ui.theme.CustomThemes
 import app.navimuse.update.UpdateWorker
 import app.navimuse.update.Updater
 import java.util.concurrent.TimeUnit
@@ -68,6 +69,7 @@ class NaviMuseApp : Application() {
         _login.value = store.server()
         _audioMuse.value = store.audioMuse()
         Dolby.init(this)
+        CustomThemes.init(this)
         // Loads the list of downloads, so songs saved on the phone play from it straight away.
         Downloads.manager(this)
         UpdateWorker.schedule(this, _settings.value.autoUpdate)
