@@ -168,6 +168,7 @@ object Downloads {
         .put("album", s.album).put("albumId", s.albumId ?: "").put("coverArt", s.coverArt ?: "")
         .put("duration", s.duration).put("track", s.track).put("disc", s.disc).put("year", s.year)
         .put("suffix", s.suffix ?: "").put("bitRate", s.bitRate).put("starred", s.starred).put("channels", s.channels)
+        .put("samplingRate", s.samplingRate).put("bitDepth", s.bitDepth).put("size", s.size)
         .toString()
 
     private fun songFrom(json: String): Song? {
@@ -189,6 +190,9 @@ object Downloads {
             bitRate = o.optInt("bitRate"),
             starred = o.optBoolean("starred"),
             channels = o.optInt("channels"),
+            samplingRate = o.optInt("samplingRate"),
+            bitDepth = o.optInt("bitDepth"),
+            size = o.optLong("size"),
         )
     }
 }

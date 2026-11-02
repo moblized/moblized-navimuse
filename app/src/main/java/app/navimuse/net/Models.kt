@@ -19,6 +19,11 @@ data class Song(
     /** Audio channels, when the server reports them (OpenSubsonic). More than 2 means surround. */
     val channels: Int = 0,
     val genre: String? = null,
+    /** Hz, when the server reports it (OpenSubsonic). */
+    val samplingRate: Int = 0,
+    val bitDepth: Int = 0,
+    /** File size in bytes. */
+    val size: Long = 0,
 )
 
 data class Album(

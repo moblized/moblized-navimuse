@@ -52,6 +52,9 @@ object Extras {
     const val SUFFIX = "suffix"
     const val CHANNELS = "channels"
     const val BITRATE = "bitRate"
+    const val SAMPLING_RATE = "samplingRate"
+    const val BIT_DEPTH = "bitDepth"
+    const val SIZE = "size"
 }
 
 /**
@@ -72,6 +75,9 @@ fun Song.toMediaItem(api: SubsonicClient, maxBitRateKbps: Int, context: String? 
         putString(Extras.SUFFIX, suffix)
         putInt(Extras.CHANNELS, channels)
         putInt(Extras.BITRATE, bitRate)
+        putInt(Extras.SAMPLING_RATE, samplingRate)
+        putInt(Extras.BIT_DEPTH, bitDepth)
+        putLong(Extras.SIZE, size)
     }
     val meta = MediaMetadata.Builder()
         .setTitle(title)
@@ -116,6 +122,9 @@ fun MediaItem.toSong(): Song? {
         bitRate = e?.getInt(Extras.BITRATE) ?: 0,
         starred = e?.getBoolean(Extras.STARRED) ?: false,
         channels = e?.getInt(Extras.CHANNELS) ?: 0,
+        samplingRate = e?.getInt(Extras.SAMPLING_RATE) ?: 0,
+        bitDepth = e?.getInt(Extras.BIT_DEPTH) ?: 0,
+        size = e?.getLong(Extras.SIZE) ?: 0L,
     )
 }
 

@@ -31,7 +31,12 @@ data class PlayerUiState(
     val error: String? = null,
     /** "Dolby Atmos", "5.1 surround"… for the audio being decoded right now, if it's special. */
     val formatLabel: String? = null,
+    /** What the player is actually decoding right now. */
+    val decoded: DecodedFormat? = null,
 )
+
+/** The audio the player is decoding: codec, sample rate, channels and bitrate (when known). */
+data class DecodedFormat(val mime: String?, val sampleRate: Int, val channels: Int, val bitrate: Int)
 
 /** The screens' handle on the background player. */
 class PlayerConnection(private val app: NaviMuseApp) {
@@ -214,17 +219,24 @@ class PlayerConnection(private val app: NaviMuseApp) {
                 queue = queue,
                 durationMs = c.duration.takeIf { d -> d != C.TIME_UNSET && d > 0 } ?: ((current?.song?.duration ?: 0) * 1000L),
                 hasNext = c.hasNextMediaItem(),
-                formatLabel = formatOf(c),
+                formatLabel = decodedOf(c)?.let { f -> Dolby.fromMime(f.mime, f.channels) },
+                decoded = decodedOf(c),
             )
         }
     }
 
-    private fun formatOf(c: MediaController): String? {
+    private fun decodedOf(c: MediaController): DecodedFormat? {
         if (!c.isCommandAvailable(Player.COMMAND_GET_TRACKS)) return null
         val group = c.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected } ?: return null
         val index = (0 until group.length).firstOrNull { group.isTrackSelected(it) } ?: return null
-        val format = group.getTrackFormat(index)
-        return Dolby.fromMime(format.sampleMimeType, format.channelCount)
+        val f = group.getTrackFormat(index)
+        val bitrate = listOf(f.averageBitrate, f.bitrate, f.peakBitrate).firstOrNull { it > 0 } ?: 0
+        return DecodedFormat(
+            f.sampleMimeType,
+            f.sampleRate.takeIf { it > 0 } ?: 0,
+            f.channelCount.takeIf { it > 0 } ?: 0,
+            bitrate,
+        )
     }
 
     private fun describe(e: PlaybackException): String {

@@ -44,6 +44,9 @@ object Parse {
         starred = o.str("starred") != null,
         channels = o.optInt("channelCount"),
         genre = o.str("genre"),
+        samplingRate = o.optInt("samplingRate"),
+        bitDepth = o.optInt("bitDepth"),
+        size = o.optLong("size"),
     )
 
     fun album(o: JSONObject) = Album(

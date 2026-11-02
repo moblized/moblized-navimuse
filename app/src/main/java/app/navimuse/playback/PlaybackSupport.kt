@@ -143,7 +143,8 @@ class QueueMemory(context: Context) {
                     .put("id", s.id).put("title", s.title).put("artist", s.artist)
                     .put("artistId", s.artistId ?: "").put("album", s.album).put("albumId", s.albumId ?: "")
                     .put("coverArt", s.coverArt ?: "").put("duration", s.duration).put("starred", s.starred)
-                    .put("suffix", s.suffix ?: "").put("channels", s.channels).put("bitRate", s.bitRate),
+                    .put("suffix", s.suffix ?: "").put("channels", s.channels).put("bitRate", s.bitRate)
+                    .put("samplingRate", s.samplingRate).put("bitDepth", s.bitDepth).put("size", s.size),
             )
         }
         prefs.edit()
@@ -173,6 +174,9 @@ class QueueMemory(context: Context) {
                     bitRate = o.optInt("bitRate"),
                     starred = o.optBoolean("starred"),
                     channels = o.optInt("channels"),
+                    samplingRate = o.optInt("samplingRate"),
+                    bitDepth = o.optInt("bitDepth"),
+                    size = o.optLong("size"),
                 )
             }.filter { it.id.isNotEmpty() }
         }.getOrNull().orEmpty()

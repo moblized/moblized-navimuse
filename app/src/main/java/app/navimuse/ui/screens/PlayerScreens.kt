@@ -101,6 +101,8 @@ import app.navimuse.ui.components.LocalUi
 import app.navimuse.ui.components.QualityBadge
 import app.navimuse.ui.components.SongMenu
 import app.navimuse.ui.components.qualityLabel
+import app.navimuse.ui.components.FormatLine
+import app.navimuse.ui.components.AudioDetails
 import app.navimuse.ui.components.MenuItem
 import app.navimuse.ui.components.rememberSoundEffects
 import app.navimuse.ui.components.swipeToSkip
@@ -218,11 +220,12 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
     val dolbyKnown by vm.dolby.collectAsState()
     // Dolby Atmos / surround as decoded right now, else as known for the song, else the file's quality.
     val special = state.formatLabel ?: remember(song.id, dolbyKnown) { Dolby.labelFor(song) }
-    val quality = special ?: remember(song.id) { qualityLabel(song, vm.streamingKbps(song)) }
+    val kbps = remember(song.id) { vm.streamingKbps(song) }
+    val quality = special ?: remember(song.id) { qualityLabel(song, kbps) }
     val soundEffects = rememberSoundEffects()
     val st = style
     val next = state.queue.getOrNull((current.index) + 1)?.song
-    val fields = songFields(song, state, pos, quality, next)
+    val fields = songFields(song, state, pos, AudioDetails.line(song, state.decoded, kbps) ?: quality, next)
 
     Surface(Modifier.fillMaxSize(), color = scheme.background) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to stage, 0.8f to scheme.background))) {
@@ -279,9 +282,10 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
 
                 val elements = st?.elements
                 if (elements == null) {
-                    TitleBlock(vm, song, starred, quality)
+                    // Only Dolby / surround gets a badge; the file details sit under the seek bar.
+                    TitleBlock(vm, song, starred, special)
                     Spacer(Modifier.height(14.dp))
-                    SeekBar(vm, state, pos, scale = st?.sliderScale ?: 1f, showTimes = st?.sliderTimes ?: true)
+                    SeekBar(vm, state, pos, scale = st?.sliderScale ?: 1f, showTimes = st?.sliderTimes ?: true, song = song, kbps = kbps)
                     Spacer(Modifier.height(10.dp))
                     ControlButtons(vm, state)
                 } else {
@@ -296,7 +300,7 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                                     song.albumId?.let { ui.navigate(Route.AlbumPage(it)) }
                                 },
                             )
-                            NpElement.Slider -> SeekBar(vm, state, pos, scale = st.sliderScale, showTimes = st.sliderTimes)
+                            NpElement.Slider -> SeekBar(vm, state, pos, scale = st.sliderScale, showTimes = st.sliderTimes, song = song, kbps = kbps)
                             NpElement.Buttons -> {
                                 Spacer(Modifier.height(6.dp))
                                 ControlButtons(vm, state)
@@ -405,7 +409,7 @@ private fun TitleBlock(vm: AppViewModel, song: Song, starred: Boolean, quality: 
 }
 
 @Composable
-private fun SeekBar(vm: AppViewModel, state: PlayerUiState, pos: Long, scale: Float, showTimes: Boolean) {
+private fun SeekBar(vm: AppViewModel, state: PlayerUiState, pos: Long, scale: Float, showTimes: Boolean, song: Song, kbps: Int) {
     val scheme = MaterialTheme.colorScheme
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
@@ -432,10 +436,13 @@ private fun SeekBar(vm: AppViewModel, state: PlayerUiState, pos: Long, scale: Fl
         modifier = Modifier.height((28 * scale).coerceAtLeast(24f).dp),
     )
     if (showTimes) {
-        Row(Modifier.fillMaxWidth()) {
+        // Position, the audio details (tap for more), duration.
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             val shownPos = if (dragging) (dragValue * duration).toLong() else pos
             Text(formatDuration((shownPos / 1000).toInt()), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                FormatLine(song, state.decoded, kbps)
+            }
             Text(formatDuration((state.durationMs / 1000).toInt()), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
         }
     }
