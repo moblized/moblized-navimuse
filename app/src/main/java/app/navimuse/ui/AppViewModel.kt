@@ -19,6 +19,7 @@ import app.navimuse.net.ServerUrl
 import app.navimuse.net.Song
 import app.navimuse.net.SonicMatch
 import app.navimuse.net.SubsonicClient
+import app.navimuse.playback.Dolby
 import app.navimuse.playback.PlayerUiState
 import app.navimuse.playback.Streaming
 import app.navimuse.update.Updater
@@ -103,7 +104,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Saves songs on the phone for offline play. */
     fun download(songs: List<Song>) {
         val api = app.api() ?: return
-        val n = Downloads.add(app, api, songs, settings.value.downloadQuality.kbps)
+        val n = Downloads.add(app, api, songs, app::downloadBitrateFor)
         val what = when (n) {
             0 -> "Already on this phone"
             1 -> "Downloading 1 song"
@@ -286,7 +287,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun searchSongs(query: String): List<Song> = api().search(query, songs = 25, albums = 0, artists = 0).songs
 
     /** Bitrate the server converts to on the phone's current network (0 = the original file). */
-    fun streamingKbps(): Int = app.currentMaxBitRate()
+    fun streamingKbps(song: Song): Int = app.bitrateFor(song)
+
+    // --- Dolby Atmos -------------------------------------------------------------------------
+
+    val dolby: StateFlow<Map<String, String>> = Dolby.known
+
+    /**
+     * Finds out once per album whether it's Dolby Atmos (or other Dolby / surround), by reading
+     * the start (or end) of one track. The server can't tell an Atmos .m4a from a plain one.
+     */
+    fun checkDolby(albumId: String, songs: List<Song>) {
+        if (Dolby.albumChecked(albumId) || songs.isEmpty()) return
+        songs.firstNotNullOfOrNull { Dolby.hint(it) }?.let {
+            Dolby.rememberAlbum(albumId, it)
+            return
+        }
+        val sample = songs.firstOrNull { Dolby.canSniff(it) }
+        if (sample == null) {
+            Dolby.rememberAlbum(albumId, null)
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                val head = api().peek(sample.id, fromEnd = false)
+                Dolby.sniff(head) ?: if (Dolby.needsTail(head)) Dolby.sniff(api().peek(sample.id, fromEnd = true)) else null
+            }.onSuccess { Dolby.rememberAlbum(albumId, it) }
+        }
+    }
+
+    fun audioSessionId(): Int = app.audioSessionId
 
     suspend fun lyrics(song: Song): Lyrics? = api().lyrics(song.id)
 

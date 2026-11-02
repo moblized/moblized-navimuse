@@ -142,7 +142,8 @@ class QueueMemory(context: Context) {
                 JSONObject()
                     .put("id", s.id).put("title", s.title).put("artist", s.artist)
                     .put("artistId", s.artistId ?: "").put("album", s.album).put("albumId", s.albumId ?: "")
-                    .put("coverArt", s.coverArt ?: "").put("duration", s.duration).put("starred", s.starred),
+                    .put("coverArt", s.coverArt ?: "").put("duration", s.duration).put("starred", s.starred)
+                    .put("suffix", s.suffix ?: "").put("channels", s.channels).put("bitRate", s.bitRate),
             )
         }
         prefs.edit()
@@ -167,8 +168,11 @@ class QueueMemory(context: Context) {
                     albumId = o.optString("albumId").ifEmpty { null },
                     coverArt = o.optString("coverArt").ifEmpty { null },
                     duration = o.optInt("duration"),
-                    track = 0, disc = 0, year = 0, suffix = null, bitRate = 0,
+                    track = 0, disc = 0, year = 0,
+                    suffix = o.optString("suffix").ifEmpty { null },
+                    bitRate = o.optInt("bitRate"),
                     starred = o.optBoolean("starred"),
+                    channels = o.optInt("channels"),
                 )
             }.filter { it.id.isNotEmpty() }
         }.getOrNull().orEmpty()

@@ -21,6 +21,17 @@ for i in 1 2 3; do
     -c:a libmp3lame -b:a 128k "music/Other Artist/Square Album/0$i.mp3"
 done
 
+# A Dolby Digital Plus 5.1 album in .m4a, like Atmos music: Navidrome can't tell it from AAC,
+# so the app has to look inside the file to show its Dolby badge.
+mkdir -p "music/Surround Artist/Dolby Album"
+for i in 1 2; do
+  ffmpeg -loglevel error -y -f lavfi -i "anoisesrc=color=brown:duration=30:amplitude=0.2" \
+    -af "pan=5.1|c0=c0|c1=c0|c2=c0|c3=c0|c4=c0|c5=c0" \
+    -metadata title="Dolby Track $i" -metadata artist="Surround Artist" -metadata album_artist="Surround Artist" \
+    -metadata album="Dolby Album" -metadata track="$i" -metadata date=2025 -metadata genre=Surround \
+    -c:a eac3 -b:a 384k -f mp4 "music/Surround Artist/Dolby Album/0$i.m4a"
+done
+
 docker run -d --name navidrome -p 4533:4533 \
   -v "$PWD/music:/music:ro" -v "$PWD/nd-data:/data" \
   -e ND_LOGLEVEL=debug -e ND_SCANNER_SCHEDULE=0 \

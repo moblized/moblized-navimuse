@@ -12,6 +12,8 @@ import app.navimuse.net.ServerInfo
 import app.navimuse.net.ServerLogin
 import app.navimuse.net.SubsonicClient
 import app.navimuse.downloads.Downloads
+import app.navimuse.net.Song
+import app.navimuse.playback.Dolby
 import app.navimuse.playback.PlayerConnection
 import app.navimuse.update.UpdateWorker
 import app.navimuse.update.Updater
@@ -65,6 +67,7 @@ class NaviMuseApp : Application() {
         _settings.value = store.settings()
         _login.value = store.server()
         _audioMuse.value = store.audioMuse()
+        Dolby.init(this)
         // Loads the list of downloads, so songs saved on the phone play from it straight away.
         Downloads.manager(this)
         UpdateWorker.schedule(this, _settings.value.autoUpdate)
@@ -101,6 +104,7 @@ class NaviMuseApp : Application() {
         player.stopAndClear()
         // Downloads belong to this login; the phone's copies go with it. Nothing on the server changes.
         Downloads.removeAll(this)
+        Dolby.clear()
         store.clearServer()
         _login.value = null
         _serverInfo.value = null
@@ -138,8 +142,21 @@ class NaviMuseApp : Application() {
                 s.autoDownloadPlaylists.forEach { id -> addAll(runCatching { api.playlist(id).songs }.getOrDefault(emptyList())) }
             }
         }
-        return withContext(Dispatchers.Main) { Downloads.add(this@NaviMuseApp, api, songs, s.downloadQuality.kbps) }
+        return withContext(Dispatchers.Main) { Downloads.add(this@NaviMuseApp, api, songs, ::downloadBitrateFor) }
     }
+
+    /**
+     * Stream bitrate for this song: the original file for Dolby Atmos and surround songs (a
+     * converted copy would be plain stereo), otherwise the setting for the current network.
+     */
+    fun bitrateFor(song: Song): Int =
+        if (_settings.value.dolbyOriginal && Dolby.labelFor(song) != null) 0 else currentMaxBitRate()
+
+    fun downloadBitrateFor(song: Song): Int =
+        if (_settings.value.dolbyOriginal && Dolby.labelFor(song) != null) 0 else _settings.value.downloadQuality.kbps
+
+    /** Id of the player's audio output, for the phone's sound effects (Dolby Atmos, equalizer). */
+    @Volatile var audioSessionId: Int = 0
 
     /** Stream bitrate for the network the phone is on right now (0 = original file). */
     fun currentMaxBitRate(): Int {

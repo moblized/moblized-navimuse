@@ -1,7 +1,11 @@
 package app.navimuse.ui.components
 
 import android.content.Context
+import android.content.Intent
+import android.media.audiofx.AudioEffect
 import android.util.LruCache
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -519,15 +523,41 @@ fun qualityLabel(song: Song, streamingKbps: Int): String? {
     }
 }
 
+/** An outlined label for audio quality; [strong] fills it in, for Dolby Atmos. */
 @Composable
-fun QualityBadge(label: String, modifier: Modifier = Modifier) {
+fun QualityBadge(label: String, modifier: Modifier = Modifier, strong: Boolean = false) {
     val c = MaterialTheme.colorScheme.accent
     Text(
         label,
         style = MaterialTheme.typography.labelMedium,
-        color = c,
-        modifier = modifier.border(1.dp, c.copy(alpha = 0.45f), RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+        color = if (strong) MaterialTheme.colorScheme.onSecondary else c,
+        modifier = modifier
+            .background(if (strong) c else Color.Transparent, RoundedCornerShape(4.dp))
+            .border(1.dp, if (strong) c else c.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
     )
+}
+
+/**
+ * Opens the phone's equalizer and sound effects for NaviMuse's audio (on Samsung phones, where
+ * Dolby Atmos is switched on). Null when the phone has no such screen.
+ */
+@Composable
+fun rememberSoundEffects(): (() -> Unit)? {
+    val context = LocalContext.current
+    val vm = LocalUi.current.vm
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
+    val available = remember {
+        Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL).resolveActivity(context.packageManager) != null
+    }
+    if (!available) return null
+    return {
+        val intent = Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL)
+            .putExtra(AudioEffect.EXTRA_AUDIO_SESSION, vm.audioSessionId())
+            .putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
+            .putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+        runCatching { launcher.launch(intent) }.onFailure { vm.say("This phone has no sound effects screen.") }
+    }
 }
 
 // --- Buttons ------------------------------------------------------------------------------------

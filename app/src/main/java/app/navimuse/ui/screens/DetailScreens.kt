@@ -44,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -59,6 +60,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.navimuse.net.Song
+import app.navimuse.playback.Dolby
+import app.navimuse.ui.components.QualityBadge
 import app.navimuse.net.SubsonicClient
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.Route
@@ -119,6 +122,7 @@ private fun ArtHeader(
     detail: String?,
     placeholder: ImageVector,
     onSubtitle: (() -> Unit)? = null,
+    badge: String? = null,
 ) {
     val art = rememberArtColor(coverArt, seed)
     val scheme = MaterialTheme.colorScheme
@@ -150,6 +154,10 @@ private fun ArtHeader(
         if (!detail.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (badge != null) {
+            Spacer(Modifier.height(10.dp))
+            QualityBadge(badge, strong = badge == Dolby.ATMOS)
         }
     }
 }
@@ -208,10 +216,13 @@ fun AlbumScreen(vm: AppViewModel, albumId: String, onBack: () -> Unit) {
     val ui = LocalUi.current
     val player by vm.playerState.collectAsState()
     val loaded = rememberLoad(albumId) { vm.api().album(albumId) }
+    val dolbyKnown by vm.dolby.collectAsState()
     DetailPage(loaded.value?.album?.name ?: "Album", onBack) { state ->
         LoadBox(loaded, Modifier.statusBarsPadding().padding(top = 56.dp)) { detail ->
             val a = detail.album
             val songs = detail.songs
+            LaunchedEffect(a.id) { vm.checkDolby(a.id, songs) }
+            val dolbyBadge = dolbyKnown["a:${a.id}"]?.ifEmpty { null }
             val multiDisc = songs.map { it.disc }.distinct().size > 1
             LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
                 item {
@@ -228,6 +239,7 @@ fun AlbumScreen(vm: AppViewModel, albumId: String, onBack: () -> Unit) {
                         ).joinToString(" · "),
                         Icons.Filled.Album,
                         onSubtitle = a.artistId?.let { id -> { ui.navigate(Route.ArtistPage(id)) } },
+                        badge = dolbyBadge,
                     )
                 }
                 item {

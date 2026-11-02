@@ -90,6 +90,23 @@ class SubsonicClient(
         return buildUrl("stream", p, login.mediaSalt).toString()
     }
 
+    /**
+     * The first (or last) [bytes] of a song's original file, to look for Dolby audio inside.
+     * Empty when the server can't send just part of the file from the end.
+     */
+    suspend fun peek(songId: String, fromEnd: Boolean, bytes: Int = 512 * 1024): ByteArray = withContext(Dispatchers.IO) {
+        val range = if (fromEnd) "bytes=-$bytes" else "bytes=0-${bytes - 1}"
+        val request = Request.Builder().url(streamUrl(songId, 0)).header("Range", range).get().build()
+        http.newCall(request).execute().use { r ->
+            if (!r.isSuccessful) throw IOException("The server answered ${r.code}.")
+            if (fromEnd && r.code != 206) return@use ByteArray(0)
+            val source = r.body?.source() ?: return@use ByteArray(0)
+            source.request(bytes.toLong())
+            val buffer = source.buffer
+            buffer.readByteArray(minOf(buffer.size, bytes.toLong()))
+        }
+    }
+
     fun coverUrl(coverArtId: String?, size: Int = 600): String? {
         if (coverArtId.isNullOrBlank()) return null
         return buildUrl("getCoverArt", listOf("id" to coverArtId, "size" to size.toString()), login.mediaSalt).toString()

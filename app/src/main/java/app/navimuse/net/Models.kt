@@ -16,6 +16,8 @@ data class Song(
     val suffix: String?,
     val bitRate: Int,
     val starred: Boolean,
+    /** Audio channels, when the server reports them (OpenSubsonic). More than 2 means surround. */
+    val channels: Int = 0,
 )
 
 data class Album(

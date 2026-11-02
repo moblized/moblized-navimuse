@@ -60,6 +60,7 @@ import app.navimuse.data.ThemeMode
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.Route
 import app.navimuse.ui.components.LocalUi
+import app.navimuse.ui.components.rememberSoundEffects
 import app.navimuse.update.Updater
 import kotlinx.coroutines.launch
 
@@ -109,6 +110,20 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                     onValueChange = { v -> vm.updateSettings { it.copy(mixSize = (v / 10).toInt() * 10) } },
                     valueRange = 20f..100f,
                     steps = 7,
+                )
+            }
+            SwitchRow(
+                "Play Dolby Atmos in its original format",
+                "Atmos and surround songs stream and download untouched, even on mobile data, so your phone's Dolby decoder plays them. " +
+                    "Turn off if they won't play, and the server converts them to stereo.",
+                settings.dolbyOriginal,
+            ) { on -> vm.updateSettings { it.copy(dolbyOriginal = on) } }
+            rememberSoundEffects()?.let { open ->
+                ListItem(
+                    headlineContent = { Text("Sound effects") },
+                    supportingContent = { Text("Your phone's equalizer and effects, such as Dolby Atmos on Samsung phones") },
+                    trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
+                    modifier = Modifier.clickable { open() },
                 )
             }
             SwitchRow(

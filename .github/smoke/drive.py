@@ -238,6 +238,20 @@ def album_and_artist():
     back()
 
 
+def dolby_album():
+    # Keep what Navidrome reports for the Dolby songs, to see which details it gives away.
+    with open(f"{OUT}/dolby-songs.json", "w") as f:
+        json.dump(api("search3", "&query=Dolby&songCount=5&albumCount=0&artistCount=0"), f, indent=1)
+    tap(text="Collection")
+    tap(text="Albums")
+    tap_node(scroll_to("Dolby Album"))
+    wait_for(text="Dolby Digital Plus", timeout=40)
+    time.sleep(1)
+    shot("16a-dolby-album")
+    back()
+    back()
+
+
 def settings_and_dark():
     tap(text="Home")
     tap(desc="Safety")
@@ -301,6 +315,7 @@ for name, fn in [
     ("genres", genres),
     ("search", search),
     ("album and artist pages", album_and_artist),
+    ("Dolby badge on a Dolby album", dolby_album),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
     ("background playback", background_playback),

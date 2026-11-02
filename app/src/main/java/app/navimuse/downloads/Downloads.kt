@@ -125,14 +125,17 @@ object Downloads {
         if (m.requirements != wanted) m.requirements = wanted
     }
 
-    /** Queues songs that aren't downloaded yet (failed ones are tried again). Returns how many. */
-    fun add(context: Context, api: SubsonicClient, songs: List<Song>, kbps: Int): Int {
+    /**
+     * Queues songs that aren't downloaded yet (failed ones are tried again). [kbpsFor] picks each
+     * song's quality (0 = the original file). Returns how many.
+     */
+    fun add(context: Context, api: SubsonicClient, songs: List<Song>, kbpsFor: (Song) -> Int): Int {
         val m = manager(context)
         val have = _items.value
         val todo = songs.distinctBy { it.id }.filter { s -> have[s.id]?.state.let { it == null || it == State.FAILED } }
         if (todo.isEmpty()) return 0
         todo.forEach { s ->
-            val request = DownloadRequest.Builder(s.id, Uri.parse(api.streamUrl(s.id, kbps)))
+            val request = DownloadRequest.Builder(s.id, Uri.parse(api.streamUrl(s.id, kbpsFor(s))))
                 .setCustomCacheKey(key(s.id))
                 .setData(songJson(s).toByteArray(Charsets.UTF_8))
                 .build()
@@ -164,7 +167,7 @@ object Downloads {
         .put("id", s.id).put("title", s.title).put("artist", s.artist).put("artistId", s.artistId ?: "")
         .put("album", s.album).put("albumId", s.albumId ?: "").put("coverArt", s.coverArt ?: "")
         .put("duration", s.duration).put("track", s.track).put("disc", s.disc).put("year", s.year)
-        .put("suffix", s.suffix ?: "").put("bitRate", s.bitRate).put("starred", s.starred)
+        .put("suffix", s.suffix ?: "").put("bitRate", s.bitRate).put("starred", s.starred).put("channels", s.channels)
         .toString()
 
     private fun songFrom(json: String): Song? {
@@ -185,6 +188,7 @@ object Downloads {
             suffix = o.optString("suffix").ifEmpty { null },
             bitRate = o.optInt("bitRate"),
             starred = o.optBoolean("starred"),
+            channels = o.optInt("channels"),
         )
     }
 }

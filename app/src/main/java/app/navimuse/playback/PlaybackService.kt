@@ -2,6 +2,7 @@ package app.navimuse.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.media.audiofx.AudioEffect
 import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -11,8 +12,8 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.common.Tracks
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.LibraryResult
@@ -55,7 +56,9 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         memory = QueueMemory(this)
 
-        player = ExoPlayer.Builder(this)
+        // If the phone's Dolby (or other) decoder can't start, try its next decoder instead of stopping.
+        val renderers = DefaultRenderersFactory(this).setEnableDecoderFallback(true)
+        player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(Streaming.playerSource(app)))
             .setLoadControl(Streaming.loadControl())
             .setAudioAttributes(
@@ -81,6 +84,23 @@ class PlaybackService : MediaLibraryService() {
 
         scrobbler = Scrobbler(player, scope, app).also { it.start() }
         preloader = NextTrackPreloader(player, scope, app).also { it.start() }
+        openEffects(player.audioSessionId)
+        player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                closeEffects()
+                openEffects(audioSessionId)
+            }
+
+            // What's really playing: Dolby Atmos (E-AC-3 JOC), other Dolby, or surround. Remembered,
+            // so the song and its album always stream untouched from now on.
+            override fun onTracksChanged(tracks: Tracks) {
+                val group = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected } ?: return
+                val index = (0 until group.length).firstOrNull { group.isTrackSelected(it) } ?: return
+                val format = group.getTrackFormat(index)
+                val label = Dolby.fromMime(format.sampleMimeType, format.channelCount) ?: return
+                player.currentMediaItem?.toSong()?.let { Dolby.learn(it, label) }
+            }
+        })
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = memory.save(player)
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -98,8 +118,7 @@ class PlaybackService : MediaLibraryService() {
     private fun restoreQueue() {
         val api = app.api() ?: return
         val saved = memory.load() ?: return
-        val bitrate = app.currentMaxBitRate()
-        player.setMediaItems(saved.songs.map { it.toMediaItem(api, bitrate) }, saved.index, saved.positionMs)
+        player.setMediaItems(saved.songs.map { it.toMediaItem(api, app.bitrateFor(it)) }, saved.index, saved.positionMs)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -112,7 +131,34 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * Tells the phone's sound-effects apps (Samsung's Dolby Atmos and equalizer, Wavelet…)
+     * that music is playing on this audio output, so their effects apply to it.
+     */
+    private fun openEffects(sessionId: Int) {
+        if (sessionId == C.AUDIO_SESSION_ID_UNSET) return
+        app.audioSessionId = sessionId
+        sendBroadcast(
+            Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION)
+                .putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
+                .putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+                .putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC),
+        )
+    }
+
+    private fun closeEffects() {
+        val sessionId = app.audioSessionId
+        if (sessionId == 0) return
+        sendBroadcast(
+            Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION)
+                .putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
+                .putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName),
+        )
+        app.audioSessionId = 0
+    }
+
     override fun onDestroy() {
+        closeEffects()
         memory.save(player)
         scrobbler?.stop()
         preloader?.stop()
@@ -129,12 +175,11 @@ class PlaybackService : MediaLibraryService() {
         app.api() ?: throw IllegalStateException("Not logged in to Navidrome")
 
     private fun Song.item(context: String? = null): MediaItem =
-        toMediaItem(requireApi(), app.currentMaxBitRate(), context)
+        toMediaItem(requireApi(), app.bitrateFor(this), context)
 
     /** Gives each item a fresh stream link (and its details, if they're missing). */
     private suspend fun resolve(items: List<MediaItem>): MutableList<MediaItem> {
         val api = requireApi()
-        val bitrate = app.currentMaxBitRate()
         val out = ArrayList<MediaItem>(items.size)
         for (item in items) {
             val songId = MediaIds.songIdOf(item.mediaId)
@@ -142,17 +187,19 @@ class PlaybackService : MediaLibraryService() {
                 // A voice request like "play Daft Punk on NaviMuse".
                 val query = item.requestMetadata.searchQuery
                 if (!query.isNullOrBlank()) {
-                    out += api.search(query, songs = 50, albums = 0, artists = 0).songs.map { it.toMediaItem(api, bitrate) }
+                    out += api.search(query, songs = 50, albums = 0, artists = 0).songs.map { it.toMediaItem(api, app.bitrateFor(it)) }
                 }
                 continue
             }
-            if (item.mediaMetadata.title != null) {
+            val known = item.toSong()
+            if (item.mediaMetadata.title != null && known != null) {
+                val kbps = app.bitrateFor(known)
                 out += item.buildUpon()
-                    .setUri(api.streamUrl(songId, bitrate))
-                    .setCustomCacheKey(streamKey(songId, bitrate))
+                    .setUri(api.streamUrl(songId, kbps))
+                    .setCustomCacheKey(streamKey(songId, kbps))
                     .build()
             } else {
-                api.song(songId)?.let { out += it.toMediaItem(api, bitrate, MediaIds.contextOf(item.mediaId)) }
+                api.song(songId)?.let { out += it.toMediaItem(api, app.bitrateFor(it), MediaIds.contextOf(item.mediaId)) }
             }
         }
         return out
@@ -310,9 +357,8 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
             val api = requireApi()
             val saved = memory.load() ?: throw IllegalStateException("Nothing to resume")
-            val bitrate = app.currentMaxBitRate()
             MediaSession.MediaItemsWithStartPosition(
-                saved.songs.map { it.toMediaItem(api, bitrate) },
+                saved.songs.map { it.toMediaItem(api, app.bitrateFor(it)) },
                 saved.index,
                 saved.positionMs,
             )

@@ -42,6 +42,7 @@ object Parse {
         suffix = o.str("suffix"),
         bitRate = o.optInt("bitRate"),
         starred = o.str("starred") != null,
+        channels = o.optInt("channelCount"),
     )
 
     fun album(o: JSONObject) = Album(

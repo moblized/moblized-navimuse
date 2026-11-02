@@ -13,6 +13,13 @@
     <!-- Installing new versions of this app from its GitHub Releases -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Lets the app find the phone's sound effects screen (Samsung's Dolby Atmos and equalizer). -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
+        </intent>
+    </queries>
+
     <!-- allowBackup is off so the saved password and token never leave the phone in a cloud backup. -->
     <application
         android:name=".NaviMuseApp"

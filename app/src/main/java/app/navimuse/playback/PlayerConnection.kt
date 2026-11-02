@@ -29,6 +29,8 @@ data class PlayerUiState(
     val durationMs: Long = 0,
     val hasNext: Boolean = false,
     val error: String? = null,
+    /** "Dolby Atmos", "5.1 surround"… for the audio being decoded right now, if it's special. */
+    val formatLabel: String? = null,
 )
 
 /** The screens' handle on the background player. */
@@ -92,8 +94,7 @@ class PlayerConnection(private val app: NaviMuseApp) {
 
     private fun items(songs: List<Song>): List<MediaItem> {
         val api = app.api() ?: return emptyList()
-        val bitrate = app.currentMaxBitRate()
-        return songs.map { it.toMediaItem(api, bitrate) }
+        return songs.map { it.toMediaItem(api, app.bitrateFor(it)) }
     }
 
     fun play(songs: List<Song>, startIndex: Int = 0, shuffle: Boolean = false) {
@@ -213,11 +214,33 @@ class PlayerConnection(private val app: NaviMuseApp) {
                 queue = queue,
                 durationMs = c.duration.takeIf { d -> d != C.TIME_UNSET && d > 0 } ?: ((current?.song?.duration ?: 0) * 1000L),
                 hasNext = c.hasNextMediaItem(),
+                formatLabel = formatOf(c),
             )
         }
     }
 
-    private fun describe(e: PlaybackException): String = when (e.errorCode) {
+    private fun formatOf(c: MediaController): String? {
+        if (!c.isCommandAvailable(Player.COMMAND_GET_TRACKS)) return null
+        val group = c.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected } ?: return null
+        val index = (0 until group.length).firstOrNull { group.isTrackSelected(it) } ?: return null
+        val format = group.getTrackFormat(index)
+        return Dolby.fromMime(format.sampleMimeType, format.channelCount)
+    }
+
+    private fun describe(e: PlaybackException): String {
+        val song = controller?.currentMediaItem?.toSong()
+        val dolby = song?.let { Dolby.labelFor(it) }
+        val decoding = e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+            e.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
+            e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+            e.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED
+        if (dolby != null && decoding && app.settings.value.dolbyOriginal) {
+            return "This phone can't decode $dolby. Turn off \"Play Dolby Atmos in its original format\" in Settings and the server will convert it to stereo."
+        }
+        return describeGeneral(e)
+    }
+
+    private fun describeGeneral(e: PlaybackException): String = when (e.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
         -> "Can't reach your server to play this song."

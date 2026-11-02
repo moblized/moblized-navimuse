@@ -31,6 +31,8 @@ data class Settings(
     val autoDownloadPlaylists: Set<String> = emptySet(),
     /** Check GitHub for new versions twice a day and download them. */
     val autoUpdate: Boolean = true,
+    /** Stream and download Dolby Atmos and surround songs untouched, so the phone decodes them. */
+    val dolbyOriginal: Boolean = true,
 )
 
 /** Saved logins and settings, in plain SharedPreferences (the secrets inside are encrypted). */
@@ -92,6 +94,7 @@ class Store(context: Context) {
         autoDownloadFavourites = prefs.getBoolean("autoDownloadFavourites", false),
         autoDownloadPlaylists = prefs.getStringSet("autoDownloadPlaylists", null)?.toSet().orEmpty(),
         autoUpdate = prefs.getBoolean("autoUpdate", true),
+        dolbyOriginal = prefs.getBoolean("dolbyOriginal", true),
     )
 
     fun saveSettings(s: Settings) {
@@ -106,6 +109,7 @@ class Store(context: Context) {
             .putBoolean("autoDownloadFavourites", s.autoDownloadFavourites)
             .putStringSet("autoDownloadPlaylists", HashSet(s.autoDownloadPlaylists))
             .putBoolean("autoUpdate", s.autoUpdate)
+            .putBoolean("dolbyOriginal", s.dolbyOriginal)
             .apply()
     }
 

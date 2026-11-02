@@ -49,6 +49,9 @@ object Extras {
     const val COVER = "coverArt"
     const val DURATION = "duration"
     const val STARRED = "starred"
+    const val SUFFIX = "suffix"
+    const val CHANNELS = "channels"
+    const val BITRATE = "bitRate"
 }
 
 /**
@@ -66,6 +69,9 @@ fun Song.toMediaItem(api: SubsonicClient, maxBitRateKbps: Int, context: String? 
         putString(Extras.COVER, coverArt)
         putInt(Extras.DURATION, duration)
         putBoolean(Extras.STARRED, starred)
+        putString(Extras.SUFFIX, suffix)
+        putInt(Extras.CHANNELS, channels)
+        putInt(Extras.BITRATE, bitRate)
     }
     val meta = MediaMetadata.Builder()
         .setTitle(title)
@@ -106,9 +112,10 @@ fun MediaItem.toSong(): Song? {
         track = m.trackNumber ?: 0,
         disc = m.discNumber ?: 0,
         year = m.recordingYear ?: 0,
-        suffix = null,
-        bitRate = 0,
+        suffix = e?.getString(Extras.SUFFIX),
+        bitRate = e?.getInt(Extras.BITRATE) ?: 0,
         starred = e?.getBoolean(Extras.STARRED) ?: false,
+        channels = e?.getInt(Extras.CHANNELS) ?: 0,
     )
 }
 

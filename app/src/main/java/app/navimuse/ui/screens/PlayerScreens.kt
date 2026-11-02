@@ -86,6 +86,9 @@ import app.navimuse.ui.components.LocalUi
 import app.navimuse.ui.components.QualityBadge
 import app.navimuse.ui.components.SongMenu
 import app.navimuse.ui.components.qualityLabel
+import app.navimuse.ui.components.MenuItem
+import app.navimuse.ui.components.rememberSoundEffects
+import app.navimuse.playback.Dolby
 import app.navimuse.ui.components.rememberArtColor
 import app.navimuse.ui.components.rememberLoad
 import app.navimuse.ui.components.stageColor
@@ -161,7 +164,11 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val art = rememberArtColor(song.coverArt, song.album.ifBlank { song.title })
     val stage = stageColor(art, scheme.isDark)
-    val quality = remember(song.id) { qualityLabel(song, vm.streamingKbps()) }
+    val dolbyKnown by vm.dolby.collectAsState()
+    // Dolby Atmos / surround as decoded right now, else as known for the song, else the file's quality.
+    val special = state.formatLabel ?: remember(song.id, dolbyKnown) { Dolby.labelFor(song) }
+    val quality = special ?: remember(song.id) { qualityLabel(song, vm.streamingKbps(song)) }
+    val soundEffects = rememberSoundEffects()
 
     Surface(Modifier.fillMaxSize(), color = scheme.background) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to stage, 0.8f to scheme.background))) {
@@ -178,7 +185,14 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                     }
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
-                        SongMenu(song, expanded = menu, onDismiss = { menu = false })
+                        SongMenu(
+                            song,
+                            expanded = menu,
+                            onDismiss = { menu = false },
+                            extra = soundEffects?.let { open ->
+                                { close -> MenuItem("Sound effects", Icons.Filled.GraphicEq) { close(); open() } }
+                            },
+                        )
                     }
                 }
 
@@ -222,7 +236,7 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                 }
                 if (quality != null) {
                     Spacer(Modifier.height(10.dp))
-                    QualityBadge(quality)
+                    QualityBadge(quality, strong = quality == Dolby.ATMOS)
                 }
                 Spacer(Modifier.height(14.dp))
 
