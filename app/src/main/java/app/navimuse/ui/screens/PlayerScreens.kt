@@ -1,6 +1,18 @@
 package app.navimuse.ui.screens
 
 import android.os.Build
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -67,7 +79,6 @@ import app.navimuse.ui.icons.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -408,40 +419,78 @@ private fun TitleBlock(vm: AppViewModel, song: Song, starred: Boolean, quality: 
     }
 }
 
+/**
+ * The seek bar. Touch anywhere along it to jump there, or drag; the touch area is taller than
+ * the line so it's easy to hit. Under it: position, audio details, duration.
+ */
 @Composable
 private fun SeekBar(vm: AppViewModel, state: PlayerUiState, pos: Long, scale: Float, showTimes: Boolean, song: Song, kbps: Int) {
     val scheme = MaterialTheme.colorScheme
+    val settings by vm.settings.collectAsState()
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
     val duration = state.durationMs.coerceAtLeast(1)
-    val sliderValue = if (dragging) dragValue else (pos.toFloat() / duration).coerceIn(0f, 1f)
-    Slider(
-        value = sliderValue,
-        onValueChange = {
-            dragging = true
-            dragValue = it
-        },
-        onValueChangeFinished = {
-            vm.player.seekTo((dragValue * duration).toLong())
-            dragging = false
-        },
-        thumb = {
-            Box(Modifier.size(((if (dragging) 16 else 12) * scale).dp).background(scheme.onSurface, CircleShape))
-        },
-        track = {
-            Box(Modifier.fillMaxWidth().height((3 * scale).dp).clip(CircleShape).background(scheme.onSurface.copy(alpha = 0.22f))) {
-                Box(Modifier.fillMaxWidth(sliderValue).fillMaxHeight().background(scheme.onSurface))
+    val value = if (dragging) dragValue else (pos.toFloat() / duration).coerceIn(0f, 1f)
+    val haptics = LocalHapticFeedback.current
+    fun fraction(x: Float, width: Int) = (x / width.coerceAtLeast(1)).coerceIn(0f, 1f)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height((36 * scale).coerceAtLeast(32f).dp)
+            .pointerInput(duration) {
+                detectTapGestures { offset ->
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    vm.player.seekTo((fraction(offset.x, size.width) * duration).toLong())
+                }
             }
-        },
-        modifier = Modifier.height((28 * scale).coerceAtLeast(24f).dp),
-    )
+            .pointerInput(duration) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        dragging = true
+                        dragValue = fraction(offset.x, size.width)
+                    },
+                    onDragEnd = {
+                        vm.player.seekTo((dragValue * duration).toLong())
+                        dragging = false
+                    },
+                    onDragCancel = { dragging = false },
+                ) { change, _ ->
+                    change.consume()
+                    dragValue = fraction(change.position.x, size.width)
+                }
+            }
+            .semantics {
+                contentDescription = "Seek"
+                progressBarRangeInfo = ProgressBarRangeInfo(value, 0f..1f)
+                setProgress { target ->
+                    vm.player.seekTo((target.coerceIn(0f, 1f) * duration).toLong())
+                    true
+                }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val track = ((if (dragging) 5 else 3) * scale).dp
+        Box(Modifier.fillMaxWidth().height(track).clip(CircleShape).background(scheme.onSurface.copy(alpha = 0.22f))) {
+            Box(Modifier.fillMaxWidth(value).fillMaxHeight().background(scheme.onSurface))
+        }
+        // The thumb, centred on the played position.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val thumb = ((if (dragging) 16 else 12) * scale).dp
+            Box(
+                Modifier
+                    .offset(x = (maxWidth - thumb) * value)
+                    .size(thumb)
+                    .background(scheme.onSurface, CircleShape),
+            )
+        }
+    }
     if (showTimes) {
         // Position, the audio details (tap for more), duration.
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             val shownPos = if (dragging) (dragValue * duration).toLong() else pos
             Text(formatDuration((shownPos / 1000).toInt()), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                FormatLine(song, state.decoded, kbps)
+                FormatLine(song, state.decoded, kbps, settings.detailsStyle)
             }
             Text(formatDuration((state.durationMs / 1000).toInt()), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
         }

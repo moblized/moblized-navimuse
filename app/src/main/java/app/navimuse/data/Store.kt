@@ -8,6 +8,13 @@ import app.navimuse.net.SubsonicAuth
 
 enum class ThemeMode(val label: String) { SYSTEM("Follow phone"), LIGHT("Light"), DARK("Dark") }
 
+/** How the audio details under the seek bar read. */
+enum class DetailsStyle(val label: String, val example: String) {
+    TIDAL("Like Tidal", "16-BIT 44.1kHZ FLAC"),
+    SYMFONIUM("Like Symfonium", "FLAC • 1,411 kb/s • 44.1 kHz"),
+    OFF("Off", "Hidden"),
+}
+
 /** Streaming quality. 0 = the original file, untouched. */
 enum class Quality(val kbps: Int, val label: String) {
     ORIGINAL(0, "Original"),
@@ -37,6 +44,7 @@ data class Settings(
     val themeId: String? = null,
     /** Symfonium icon pack in use ("<package>/<pack id>"), or null for NaviMuse's own icons. */
     val iconPack: String? = null,
+    val detailsStyle: DetailsStyle = DetailsStyle.TIDAL,
 )
 
 /** Saved logins and settings, in plain SharedPreferences (the secrets inside are encrypted). */
@@ -101,6 +109,7 @@ class Store(context: Context) {
         dolbyOriginal = prefs.getBoolean("dolbyOriginal", true),
         themeId = prefs.getString("customTheme", null),
         iconPack = prefs.getString("iconPack", null),
+        detailsStyle = enumOr(prefs.getString("detailsStyle", null), DetailsStyle.TIDAL),
     )
 
     fun saveSettings(s: Settings) {
@@ -118,6 +127,7 @@ class Store(context: Context) {
             .putBoolean("dolbyOriginal", s.dolbyOriginal)
             .putString("customTheme", s.themeId)
             .putString("iconPack", s.iconPack)
+            .putString("detailsStyle", s.detailsStyle.name)
             .apply()
     }
 

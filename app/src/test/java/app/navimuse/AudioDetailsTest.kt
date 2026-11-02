@@ -32,6 +32,15 @@ class AudioDetailsTest {
     }
 
     @Test
+    fun tidalStyle() {
+        assertEquals("16-BIT 44.1kHZ FLAC", AudioDetails.tidalLine(song("flac", 1411, 44100, 16), DecodedFormat("audio/flac", 44100, 2, 0), 0, null))
+        assertEquals("24-BIT 96kHZ FLAC", AudioDetails.tidalLine(song("flac", 4608, 96000, 24), null, 0, null))
+        assertEquals("320 KBPS OPUS", AudioDetails.tidalLine(song("flac", 1411, 44100, 16), DecodedFormat("audio/opus", 48000, 2, 0), 320, null))
+        assertEquals("256 KBPS AAC", AudioDetails.tidalLine(song("m4a", 256, 44100), DecodedFormat("audio/mp4a-latm", 44100, 2, 0), 0, null))
+        assertEquals("DOLBY ATMOS", AudioDetails.tidalLine(song("m4a", 768, 48000), DecodedFormat("audio/eac3-joc", 48000, 6, 0), 0, "Dolby Atmos"))
+    }
+
+    @Test
     fun beforeThePlayerKnows() {
         assertEquals("MP3 • 320 kb/s • 44.1 kHz", AudioDetails.line(song("mp3", 320, 44100), null, 0))
         assertEquals("AAC • 256 kb/s • 44.1 kHz", AudioDetails.line(song("m4a", 256, 44100), DecodedFormat("audio/mp4a-latm", 44100, 2, 0), 0))

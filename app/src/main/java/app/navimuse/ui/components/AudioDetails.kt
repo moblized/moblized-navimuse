@@ -26,7 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import app.navimuse.data.DetailsStyle
 import app.navimuse.net.Song
+import app.navimuse.ui.theme.accent
 import app.navimuse.playback.DecodedFormat
 import app.navimuse.playback.Dolby
 import app.navimuse.ui.icons.Icon
@@ -89,6 +92,24 @@ object AudioDetails {
         return parts.takeIf { it.isNotEmpty() }?.joinToString(" • ")
     }
 
+    /**
+     * Tidal's way: "16-BIT 44.1kHZ FLAC" for lossless, "320 KBPS AAC" for lossy and converted
+     * songs, "DOLBY ATMOS" for Atmos.
+     */
+    fun tidalLine(song: Song, decoded: DecodedFormat?, streamKbps: Int, dolby: String?): String? {
+        if (dolby != null && dolby.startsWith("Dolby")) return dolby.uppercase(Locale.US)
+        val converted = streamKbps > 0 && (song.bitRate == 0 || song.bitRate > streamKbps)
+        val codec = type(song, decoded, converted)?.substringAfter('/') ?: return null
+        val hz = decoded?.sampleRate?.takeIf { it > 0 } ?: song.samplingRate.takeIf { it > 0 }
+        val khz = hz?.let { (if (it % 1000 == 0) "${it / 1000}" else String.format(Locale.US, "%.1f", it / 1000.0)) + "kHZ" }
+        return if (!converted && codec in lossless) {
+            listOfNotNull(song.bitDepth.takeIf { it > 0 }?.let { "$it-BIT" }, khz, codec).joinToString(" ")
+        } else {
+            val kbps = if (converted) streamKbps else song.bitRate.takeIf { it > 0 }
+            listOfNotNull(kbps?.let { "$it KBPS" }, codec).joinToString(" ")
+        }
+    }
+
     /** Every detail, for the ⓘ dialog. */
     fun details(song: Song, decoded: DecodedFormat?, streamKbps: Int, dolby: String?): List<Pair<String, String>> {
         val converted = streamKbps > 0 && (song.bitRate == 0 || song.bitRate > streamKbps)
@@ -115,22 +136,35 @@ object AudioDetails {
     }
 }
 
-/** "ⓘ MP4/EAC3 • 768 kb/s • 48.0 kHz"; tap it for every detail. */
+/**
+ * The audio details between the seek bar's times: Tidal's "16-BIT 44.1kHZ FLAC" or Symfonium's
+ * "ⓘ MP4/EAC3 • 768 kb/s • 48.0 kHz". Tap it for every detail.
+ */
 @Composable
-fun FormatLine(song: Song, decoded: DecodedFormat?, streamKbps: Int, modifier: Modifier = Modifier) {
-    val line = AudioDetails.line(song, decoded, streamKbps) ?: return
+fun FormatLine(song: Song, decoded: DecodedFormat?, streamKbps: Int, style: DetailsStyle, modifier: Modifier = Modifier) {
+    if (style == DetailsStyle.OFF) return
+    val dolby = Dolby.fromMime(decoded?.mime, decoded?.channels ?: 0) ?: Dolby.labelFor(song)
+    val line = (if (style == DetailsStyle.TIDAL) AudioDetails.tidalLine(song, decoded, streamKbps, dolby) else AudioDetails.line(song, decoded, streamKbps))
+        ?: return
     var open by remember { mutableStateOf(false) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier.clip(RoundedCornerShape(6.dp)).clickable { open = true }.padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Outlined.Info, "Audio details", tint = muted, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(5.dp))
-        Text(line, style = MaterialTheme.typography.labelMedium, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (style == DetailsStyle.SYMFONIUM) {
+            Icon(Icons.Outlined.Info, "Audio details", tint = muted, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(
+            line,
+            style = if (style == DetailsStyle.TIDAL) MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.6.sp) else MaterialTheme.typography.labelMedium,
+            color = if (style == DetailsStyle.TIDAL && dolby == Dolby.ATMOS) MaterialTheme.colorScheme.accent else muted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
     if (open) {
-        val dolby = Dolby.fromMime(decoded?.mime, decoded?.channels ?: 0) ?: Dolby.labelFor(song)
         AlertDialog(
             onDismissRequest = { open = false },
             title = { Text("Audio details") },

@@ -55,6 +55,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import app.navimuse.BuildConfig
+import app.navimuse.data.DetailsStyle
 import app.navimuse.data.Quality
 import app.navimuse.data.ThemeMode
 import app.navimuse.ui.AppViewModel
@@ -125,6 +126,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                     "Turn off if they won't play, and the server converts them to stereo.",
                 settings.dolbyOriginal,
             ) { on -> vm.updateSettings { it.copy(dolbyOriginal = on) } }
+            DetailsStylePicker(settings.detailsStyle) { d -> vm.updateSettings { it.copy(detailsStyle = d) } }
             rememberSoundEffects()?.let { open ->
                 ListItem(
                     headlineContent = { Text("Sound effects") },
@@ -278,6 +280,30 @@ private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onChan
         },
         trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
         modifier = Modifier.clickable { onChange(!checked) },
+    )
+}
+
+/** How the audio details under the seek bar read (Tidal, Symfonium, or hidden). */
+@Composable
+private fun DetailsStylePicker(value: DetailsStyle, onPick: (DetailsStyle) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ListItem(
+        headlineContent = { Text("Audio details on the playing screen") },
+        supportingContent = { Text("${value.label}: ${value.example}") },
+        trailingContent = {
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DetailsStyle.entries.forEach { d ->
+                    DropdownMenuItem(
+                        text = { Text("${d.label}  ·  ${d.example}") },
+                        onClick = {
+                            expanded = false
+                            onPick(d)
+                        },
+                    )
+                }
+            }
+        },
+        modifier = Modifier.clickable { expanded = true },
     )
 }
 
