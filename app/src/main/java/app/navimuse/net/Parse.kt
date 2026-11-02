@@ -47,6 +47,7 @@ object Parse {
         samplingRate = o.optInt("samplingRate"),
         bitDepth = o.optInt("bitDepth"),
         size = o.optLong("size"),
+        explicit = o.str("explicitStatus").equals("explicit", ignoreCase = true),
     )
 
     fun album(o: JSONObject) = Album(

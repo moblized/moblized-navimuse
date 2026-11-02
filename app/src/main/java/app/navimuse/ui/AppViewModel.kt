@@ -233,8 +233,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- playing ---------------------------------------------------------------------------
 
-    fun play(songs: List<Song>, index: Int = 0, shuffle: Boolean = false) {
+    /** Where the queue came from, for "Playing from" on the playing screen. */
+    data class PlaySource(val name: String, val route: Route? = null)
+
+    private val _source = MutableStateFlow<PlaySource?>(null)
+    val source: StateFlow<PlaySource?> = _source.asStateFlow()
+
+    fun play(songs: List<Song>, index: Int = 0, shuffle: Boolean = false, from: PlaySource? = null) {
         if (app.api() == null) return
+        _source.value = from
         player.play(songs, index, shuffle)
     }
 
@@ -257,7 +264,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             say("No similar songs came back. Has AudioMuse-AI analysed this song yet?")
             return@action
         }
-        play(listOf(seed) + similar)
+        play(listOf(seed) + similar, from = PlaySource("Instant Mix: ${seed.title}"))
     }
 
     fun mixFromAlbum(album: Album) = action("Making an Instant Mix…") {
@@ -267,23 +274,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             say("No similar songs came back. Has AudioMuse-AI analysed this album yet?")
             return@action
         }
-        play(listOf(seed) + similar)
+        play(listOf(seed) + similar, from = PlaySource("Instant Mix: ${album.name}", Route.AlbumPage(album.id)))
     }
 
     fun artistRadio(artist: Artist) = action("Starting artist radio…") {
         val songs = api().similarSongsByArtist(artist.id, mixSize())
-        if (songs.isEmpty()) say("No songs came back for ${artist.name}'s radio.") else play(songs)
+        if (songs.isEmpty()) say("No songs came back for ${artist.name}'s radio.") else play(songs, from = PlaySource("${artist.name} radio", Route.ArtistPage(artist.id)))
     }
 
     /** An Instant Mix from a random song in your library. */
     fun surpriseMix() = action("Making a surprise mix…") {
         val seed = api().randomSongs(1).firstOrNull() ?: return@action
         val similar = api().similarSongs(seed.id, mixSize()).filter { it.id != seed.id }
-        play(listOf(seed) + similar)
+        play(listOf(seed) + similar, from = PlaySource("Surprise mix"))
     }
 
     fun shuffleAll() = action("Shuffling your library…") {
-        play(api().randomSongs(100))
+        play(api().randomSongs(100), from = PlaySource("Your library"))
     }
 
     suspend fun sonicSimilar(song: Song): List<SonicMatch> = api().sonicSimilar(song.id, 40)
@@ -432,7 +439,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Shuffles every song in a genre. */
     fun playGenre(genre: String) = action("Shuffling $genre…") {
         val songs = api().songsByGenre(genre, 300)
-        if (songs.isEmpty()) say("No songs tagged $genre.") else play(songs, shuffle = true)
+        if (songs.isEmpty()) say("No songs tagged $genre.") else play(songs, shuffle = true, from = PlaySource(genre, Route.GenrePage(genre)))
     }
 
     // --- favourites ------------------------------------------------------------------------

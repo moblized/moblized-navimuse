@@ -24,6 +24,8 @@ data class Song(
     val bitDepth: Int = 0,
     /** File size in bytes. */
     val size: Long = 0,
+    /** Tagged explicit (OpenSubsonic explicitStatus). */
+    val explicit: Boolean = false,
 )
 
 data class Album(

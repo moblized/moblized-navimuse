@@ -376,6 +376,7 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
         LoadBox(loaded, Modifier.statusBarsPadding().padding(top = 56.dp)) { detail ->
             val p = detail.playlist
             val songs = detail.songs
+            val from = AppViewModel.PlaySource(p.name, Route.PlaylistPage(p.id))
             LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
                 item {
                     ArtHeader(
@@ -417,13 +418,13 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
                         MoreAction(songs)
                     }
                     ActionsRow {
-                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(songs) }
-                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(songs, shuffle = true) }
+                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(songs, from = from) }
+                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(songs, shuffle = true, from = from) }
                     }
                 }
                 if (songs.isEmpty()) item { EmptyBox("This playlist is empty.") }
                 itemsIndexed(songs, key = { i, s -> "$i-${s.id}" }) { i, s ->
-                    SongRow(s, onPlay = { vm.play(songs, i) }, isCurrent = player.current?.song?.id == s.id)
+                    SongRow(s, onPlay = { vm.play(songs, i, from = from) }, isCurrent = player.current?.song?.id == s.id)
                 }
             }
         }

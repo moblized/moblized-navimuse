@@ -241,8 +241,8 @@ fun FavouritesScreen(vm: AppViewModel, onBack: () -> Unit) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
                 item {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(songs) }
-                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(songs, shuffle = true) }
+                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(songs, from = favourites) }
+                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(songs, shuffle = true, from = favourites) }
                     }
                 }
                 if (starred.albums.isNotEmpty()) {
@@ -264,12 +264,14 @@ fun FavouritesScreen(vm: AppViewModel, onBack: () -> Unit) {
                 item { SectionHeader("Tracks") }
                 if (songs.isEmpty()) item { EmptyBox("Tap the heart on a song to add it here.") }
                 itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
-                    SongRow(s, onPlay = { vm.play(songs, i) }, isCurrent = player.current?.song?.id == s.id)
+                    SongRow(s, onPlay = { vm.play(songs, i, from = favourites) }, isCurrent = player.current?.song?.id == s.id)
                 }
             }
         }
     }
 }
+
+private val favourites = AppViewModel.PlaySource("Favourites", Route.Favourites)
 
 /** Everything saved on the phone, playable with no connection. */
 @Composable
@@ -302,8 +304,8 @@ fun DownloadsScreen(vm: AppViewModel, onBack: () -> Unit) {
             if (done.isNotEmpty()) {
                 item {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(done) }
-                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(done, shuffle = true) }
+                        ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(done, from = downloadsSource) }
+                        ActionPill("Shuffle", Icons.Filled.Shuffle, Modifier.weight(1f)) { vm.play(done, shuffle = true, from = downloadsSource) }
                     }
                 }
             }
@@ -345,7 +347,7 @@ fun DownloadsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 item { EmptyBox("Nothing downloaded yet. Tap the download button on an album or playlist to play it without a connection.") }
             }
             itemsIndexed(done, key = { _, s -> "d-${s.id}" }) { i, s ->
-                SongRow(s, onPlay = { vm.play(done, i) }, isCurrent = player.current?.song?.id == s.id)
+                SongRow(s, onPlay = { vm.play(done, i, from = downloadsSource) }, isCurrent = player.current?.song?.id == s.id)
             }
         }
     }
@@ -356,3 +358,4 @@ private fun formatBytes(bytes: Long): String = when {
     bytes >= 1L shl 20 -> "%.0f MB".format(bytes / (1L shl 20).toDouble())
     else -> "${bytes / 1024} KB"
 }
+private val downloadsSource = AppViewModel.PlaySource("Downloads", Route.Downloads)

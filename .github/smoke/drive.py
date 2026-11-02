@@ -201,16 +201,16 @@ def play():
 
 def now_playing():
     tap(text="Sine Song 1", last=True)  # the mini player, below the list
-    wait_for(text="Now playing")
+    wait_for(text="Playing from")
     # Repeat the queue, so music is still playing when background playback is checked at the end.
     tap(desc="Repeat")
     time.sleep(2)
     shot("10-now-playing")
-    tap(text="Queue")
+    tap(desc="Queue")
     wait_for(text="Save as playlist", contains=True)
     shot("11-queue")
     back()
-    tap(desc="Close")
+    back()  # closes the playing screen
 
 
 def audiomuse_tab():
@@ -273,7 +273,7 @@ def dolby_album():
 def settings_and_dark():
     tap(text="Home")
     tap(desc="Settings")
-    wait_for(text="Playback")
+    wait_for(text="Navidrome")
     shot("17-settings")
     # Safety lives in Settings now.
     tap_node(scroll_to("Safety"))
@@ -414,7 +414,8 @@ def symfonium_styles():
         time.sleep(2)
         import_link("http://10.0.2.2:8088/smoke-app.json")
         back()
-        wait_for(text="Fresh in", timeout=30)
+        time.sleep(3)
+        scroll_to("Fresh in")
         time.sleep(2)
         shot("25-home-app-style")
         import_link("http://10.0.2.2:8088/smoke-combo.json")
@@ -425,7 +426,7 @@ def symfonium_styles():
         wait_for(text="Styled ", contains=True, timeout=20)
         time.sleep(2)
         shot("27-now-playing-style")
-        tap(desc="Close")
+        back()
     finally:
         server.terminate()
 
