@@ -27,7 +27,7 @@ import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
+import app.navimuse.ui.icons.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -37,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,7 +48,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import app.navimuse.ui.AppViewModel
+import app.navimuse.ui.icons.IconPacks
 import app.navimuse.ui.components.ActionPill
 import app.navimuse.ui.theme.CustomTheme
 import app.navimuse.ui.theme.isDark
@@ -218,4 +222,68 @@ private fun ThemeLinkDialog(onDismiss: () -> Unit, onImport: (String) -> Unit) {
         confirmButton = { TextButton(onClick = { onImport(link) }, enabled = link.isNotBlank()) { Text("Import") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+private const val SYMFONIUM_ICON_PACKS = "https://styles.symfonium.app/styles?type=icon_pack"
+
+/**
+ * Icon packs made for Symfonium. They're small apps: install one and it shows up here.
+ * The list is re-read each time you come back to the screen.
+ */
+@Composable
+fun IconPackSettings(vm: AppViewModel) {
+    val context = LocalContext.current
+    val settings by vm.settings.collectAsState()
+    var refresh by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { refresh++ }
+    val packs = remember(refresh) { IconPacks.installed(context) }
+
+    Text(
+        "Icons",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp),
+    )
+    PackRow("NaviMuse", settings.iconPack == null) { vm.useIconPack(null) }
+    packs.forEach { p -> PackRow(p.label, settings.iconPack == p.id) { vm.useIconPack(p.id) } }
+    if (settings.iconPack != null && packs.none { it.id == settings.iconPack }) {
+        Text(
+            "The icon pack you picked isn't installed any more, so NaviMuse's own icons are showing.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+    }
+    Text(
+        if (packs.isEmpty()) {
+            "Icon packs made for Symfonium work here too. Install one from Symfonium Styles and it shows up in this list."
+        } else {
+            "Icons a pack doesn't include keep NaviMuse's own."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+    TextButton(
+        onClick = {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SYMFONIUM_ICON_PACKS)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        },
+        modifier = Modifier.padding(horizontal = 4.dp),
+    ) {
+        Icon(Icons.Filled.Palette, null, modifier = Modifier.size(18.dp))
+        Text("  Browse Symfonium icon packs")
+    }
+}
+
+@Composable
+private fun PackRow(name: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onSelect).padding(start = 4.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Spacer(Modifier.width(8.dp))
+        Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }

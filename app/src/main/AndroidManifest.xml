@@ -18,6 +18,10 @@
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
         </intent>
+        <!-- Finds icon packs made for Symfonium. -->
+        <intent>
+            <action android:name="app.symfonium.intent.action.ICON_PACK" />
+        </intent>
     </queries>
 
     <!-- allowBackup is off so the saved password and token never leave the phone in a cloud backup. -->

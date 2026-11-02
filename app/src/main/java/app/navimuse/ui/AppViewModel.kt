@@ -334,6 +334,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun useTheme(id: String?) = updateSettings { it.copy(themeId = id) }
 
+    /** A Symfonium icon pack ("<package>/<pack id>"), or null for NaviMuse's own icons. */
+    fun useIconPack(id: String?) = updateSettings { it.copy(iconPack = id) }
+
     fun deleteTheme(theme: CustomTheme) {
         if (settings.value.themeId == theme.id) useTheme(null)
         CustomThemes.delete(theme.id)

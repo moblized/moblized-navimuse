@@ -7,6 +7,17 @@ import android.util.LruCache
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlin.math.abs
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -54,7 +65,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
+import app.navimuse.ui.icons.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -233,6 +244,49 @@ private fun Color.compositeOn(bg: Color): Color = Color(
     blue = blue * alpha + bg.blue * (1 - alpha),
     alpha = 1f,
 )
+
+/**
+ * Swipe left for the next song, right for the previous one. The content follows the finger,
+ * slides out when the swipe counts, and the new song slides in from the other side.
+ */
+@Composable
+fun Modifier.swipeToSkip(onNext: () -> Unit, onPrevious: () -> Unit): Modifier {
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(0f) }
+    val haptics = LocalHapticFeedback.current
+    val threshold = with(LocalDensity.current) { 64.dp.toPx() }
+    val next by rememberUpdatedState(onNext)
+    val previous by rememberUpdatedState(onPrevious)
+    return this
+        .graphicsLayer {
+            translationX = offset.value
+            alpha = 1f - (abs(offset.value) / size.width.coerceAtLeast(1f)).coerceIn(0f, 0.6f)
+        }
+        .pointerInput(Unit) {
+            val width = size.width.toFloat()
+            detectHorizontalDragGestures(
+                onDragEnd = {
+                    scope.launch {
+                        val dx = offset.value
+                        if (abs(dx) >= threshold) {
+                            val dir = if (dx < 0) -1f else 1f
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            offset.animateTo(dir * width, tween(120))
+                            if (dir < 0) next() else previous()
+                            offset.snapTo(-dir * width * 0.5f)
+                            offset.animateTo(0f, tween(220))
+                        } else {
+                            offset.animateTo(0f, spring())
+                        }
+                    }
+                },
+                onDragCancel = { scope.launch { offset.animateTo(0f, spring()) } },
+            ) { change, amount ->
+                change.consume()
+                scope.launch { offset.snapTo(offset.value + amount) }
+            }
+        }
+}
 
 // --- Headers ------------------------------------------------------------------------------------
 

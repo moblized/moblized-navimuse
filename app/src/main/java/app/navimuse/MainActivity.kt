@@ -11,13 +11,19 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.content.IntentCompat
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.navimuse.ui.AppRoot
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.isDark
+import app.navimuse.ui.icons.IconPacks
+import app.navimuse.ui.icons.LocalIconPack
 import app.navimuse.ui.theme.AppTheme
 import app.navimuse.ui.theme.CustomThemes
 import app.navimuse.update.Updater
@@ -58,8 +64,13 @@ class MainActivity : ComponentActivity() {
                 }
                 enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
             }
+            val iconPack = remember(settings.iconPack, iconPackRefresh) {
+                settings.iconPack?.let { IconPacks.load(this@MainActivity, it) }
+            }
             AppTheme(dark = dark, custom = themes.firstOrNull { it.id == settings.themeId }) {
-                AppRoot(vm)
+                CompositionLocalProvider(LocalIconPack provides iconPack) {
+                    AppRoot(vm)
+                }
             }
         }
     }
@@ -96,8 +107,12 @@ class MainActivity : ComponentActivity() {
         setIntent(Intent(this, MainActivity::class.java))
     }
 
+    /** Bumped when the app comes back, so an icon pack updated in the meantime is re-read. */
+    private var iconPackRefresh by mutableIntStateOf(0)
+
     override fun onStart() {
         super.onStart()
+        iconPackRefresh++
         vm.onForeground()
     }
 

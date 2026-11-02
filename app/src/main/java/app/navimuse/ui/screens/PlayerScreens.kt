@@ -48,7 +48,7 @@ import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
+import app.navimuse.ui.icons.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -88,6 +88,7 @@ import app.navimuse.ui.components.SongMenu
 import app.navimuse.ui.components.qualityLabel
 import app.navimuse.ui.components.MenuItem
 import app.navimuse.ui.components.rememberSoundEffects
+import app.navimuse.ui.components.swipeToSkip
 import app.navimuse.playback.Dolby
 import app.navimuse.ui.components.rememberArtColor
 import app.navimuse.ui.components.rememberLoad
@@ -124,11 +125,17 @@ fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
                 Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Cover(song.coverArt, size = 44.dp, seed = song.album.ifBlank { song.title })
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(song.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(song.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Swipe the song left or right to skip, like on the playing screen.
+                Row(
+                    Modifier.weight(1f).swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() }),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Cover(song.coverArt, size = 44.dp, seed = song.album.ifBlank { song.title })
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(song.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(song.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 Box(contentAlignment = Alignment.Center) {
                     IconButton(onClick = { vm.player.togglePlay() }) {
@@ -202,9 +209,15 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                     Spacer(Modifier.height(16.dp))
                 } else {
                     Spacer(Modifier.weight(0.5f))
+                    // Swipe the art left for the next song, right for the previous one.
                     CoverFill(
                         song.coverArt,
-                        Modifier.align(Alignment.CenterHorizontally).fillMaxWidth().widthIn(max = 440.dp).aspectRatio(1f),
+                        Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .fillMaxWidth()
+                            .widthIn(max = 440.dp)
+                            .aspectRatio(1f)
+                            .swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() }),
                         shape = RoundedCornerShape(6.dp),
                         seed = song.album.ifBlank { song.title },
                     )
@@ -213,7 +226,16 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
 
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(song.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        // Tap the song's name to open its album.
+                        Text(
+                            song.title,
+                            style = MaterialTheme.typography.headlineMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable(enabled = song.albumId != null) {
+                                song.albumId?.let { ui.navigate(Route.AlbumPage(it)) }
+                            },
+                        )
                         Spacer(Modifier.height(2.dp))
                         Text(
                             song.artist,
@@ -274,7 +296,12 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = { vm.player.setShuffle(!state.shuffle) }) {
-                        Icon(Icons.Filled.Shuffle, "Shuffle", tint = if (state.shuffle) scheme.accent else scheme.onSurfaceVariant)
+                        Icon(
+                            Icons.Filled.Shuffle,
+                            "Shuffle",
+                            tint = if (state.shuffle) scheme.accent else scheme.onSurfaceVariant,
+                            key = if (state.shuffle) "playback.shuffle.on" else "playback.shuffle",
+                        )
                     }
                     IconButton(onClick = { vm.player.previous() }, modifier = Modifier.size(56.dp)) {
                         Icon(Icons.Filled.SkipPrevious, "Previous", modifier = Modifier.size(38.dp))
@@ -297,6 +324,11 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                             if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
                             "Repeat",
                             tint = if (state.repeatMode != Player.REPEAT_MODE_OFF) scheme.accent else scheme.onSurfaceVariant,
+                            key = when (state.repeatMode) {
+                                Player.REPEAT_MODE_ONE -> "playback.repeat.one.on"
+                                Player.REPEAT_MODE_ALL -> "playback.repeat.on"
+                                else -> "playback.repeat"
+                            },
                         )
                     }
                 }

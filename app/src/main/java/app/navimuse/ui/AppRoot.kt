@@ -34,7 +34,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Icon
+import app.navimuse.ui.icons.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -86,11 +86,12 @@ import app.navimuse.ui.screens.SearchScreen
 import app.navimuse.ui.screens.SettingsScreen
 import app.navimuse.ui.screens.SimilarScreen
 
-enum class Tab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector) {
-    Home("Home", Icons.Outlined.Home, Icons.Filled.Home),
-    Mixes("Mixes", Icons.Outlined.AutoAwesome, Icons.Filled.AutoAwesome),
-    Search("Search", Icons.Outlined.Search, Icons.Filled.Search),
-    Collection("Collection", Icons.Outlined.LibraryMusic, Icons.Filled.LibraryMusic),
+/** [packKey] is the Symfonium icon-pack key; ".selected" is added for the current tab. */
+enum class Tab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector, val packKey: String, val packKeyHasSelected: Boolean = true) {
+    Home("Home", Icons.Outlined.Home, Icons.Filled.Home, "navigation.home"),
+    Mixes("Mixes", Icons.Outlined.AutoAwesome, Icons.Filled.AutoAwesome, "playback.radio.mix", packKeyHasSelected = false),
+    Search("Search", Icons.Outlined.Search, Icons.Filled.Search, "navigation.search"),
+    Collection("Collection", Icons.Outlined.LibraryMusic, Icons.Filled.LibraryMusic, "navigation.library"),
 }
 
 sealed interface Route {
@@ -277,7 +278,13 @@ private fun BottomTabs(selected: Tab, onSelect: (Tab) -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Icon(if (on) t.selectedIcon else t.icon, null, tint = color, modifier = Modifier.size(24.dp))
+                Icon(
+                    if (on) t.selectedIcon else t.icon,
+                    null,
+                    tint = color,
+                    modifier = Modifier.size(24.dp),
+                    key = if (on && t.packKeyHasSelected) "${t.packKey}.selected" else t.packKey,
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(t.label, style = MaterialTheme.typography.labelSmall, color = color)
             }
