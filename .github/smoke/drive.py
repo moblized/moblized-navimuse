@@ -358,6 +358,76 @@ def symfonium_theme():
         server.terminate()
 
 
+NOW_PLAYING_STYLE = {
+    "name": "Smoke Combo", "type": "nowplaying", "version": 1,
+    "style": json.dumps({
+        "compactConfiguration": {
+            "floating": True, "playerCornerRadius": 50, "swipeToSkip": True,
+            "playerMargins": {"horizontal": 8, "bottom": 4}, "thumbnailRoundedCorners": 50,
+            "title": {"text": 100, "customText": "Mini %title%"},
+        },
+        "portraitConfiguration": {
+            "coverArtRoundedCornerPercent": 50, "sliderSize": 1.3, "sliderShowTimes": 1,
+            "controlsOrder": [10, 11, 20, 30],
+            "controlText1": {"text": 100, "style": 2, "size": 1.4, "customText": "Styled %title%"},
+            "controlText2": {"text": 100, "color": 1, "customText": "%artist%{ · %album%}{ (%year%)}"},
+            "topBarTitle": {"text": 100, "customText": "{Up next: %next.title%}"},
+        },
+    }),
+}
+
+APP_STYLE = {
+    "name": "Smoke App", "type": "application", "version": 1,
+    "style": json.dumps({"i": {
+        "home.rows": "s:shortcut;q:recentalbums;q:lastplayedalbums;q:favoritesongs",
+        "home.rows.hidden": "",
+        "home.shortcuts": "playlists;artists;settings",
+        "library.shortcuts": "artists;realalbums;playlists",
+        "library.page.configuration": json.dumps({"gridColumns": 2}),
+        "overview.row.q:recentalbums": json.dumps({"headerVisible": True, "headerCustomText": "Fresh in", "dataItemCount": 20}),
+        "overview.row.q:lastplayedalbums": json.dumps({"headerVisible": True, "headerCustomText": "Jump back in"}),
+    }}),
+}
+
+
+def import_link(url):
+    tap(text="Home")
+    tap(desc="Settings")
+    tap_node(scroll_to("Import link"))
+    wait_for(text="Import from a link")
+    tap(text="styles.symfonium.app/styles", contains=True)
+    type_text(url)
+    tap(text="Import")
+    time.sleep(3)
+
+
+def symfonium_styles():
+    with open("theme-site/smoke-combo.json", "w") as f:
+        json.dump(NOW_PLAYING_STYLE, f)
+    with open("theme-site/smoke-app.json", "w") as f:
+        json.dump(APP_STYLE, f)
+    server = subprocess.Popen(["python3", "-m", "http.server", "8088", "--directory", "theme-site"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        time.sleep(2)
+        import_link("http://10.0.2.2:8088/smoke-app.json")
+        back()
+        wait_for(text="Fresh in", timeout=30)
+        time.sleep(2)
+        shot("25-home-app-style")
+        import_link("http://10.0.2.2:8088/smoke-combo.json")
+        back()
+        wait_for(text="Mini ", contains=True, timeout=20)
+        shot("26-mini-player-style")
+        tap(text="Mini ", contains=True)
+        wait_for(text="Styled ", contains=True, timeout=20)
+        time.sleep(2)
+        shot("27-now-playing-style")
+        tap(desc="Close")
+    finally:
+        server.terminate()
+
+
 def background_playback():
     # Music should keep playing with the app in the background.
     out = adb("shell", "dumpsys", "media_session")
@@ -379,6 +449,7 @@ for name, fn in [
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
     ("import a Symfonium colour theme", symfonium_theme),
+    ("import Symfonium app and now-playing styles", symfonium_styles),
     ("background playback", background_playback),
 ]:
     ok = step(name, fn) and ok
