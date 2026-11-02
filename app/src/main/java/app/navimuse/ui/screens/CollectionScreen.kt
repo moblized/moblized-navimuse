@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -84,11 +85,15 @@ fun CollectionScreen(vm: AppViewModel) {
     val recent = rememberLoad("collection-recent") { vm.api().albumList(AlbumListType.RECENT, 12) }
     val appStyle by vm.appStyle.collectAsState()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-        item { PageHeader("My collection") }
+        item {
+            PageHeader("Collection") {
+                IconButton(onClick = { ui.navigate(Route.SettingsPage) }) { Icon(Icons.Filled.Settings, "Settings") }
+            }
+        }
         item { Spacer(Modifier.size(8.dp)) }
         // A Symfonium app style's library menu order; NaviMuse's own otherwise.
         val styled = appStyle?.library.orEmpty().filter { it in menuEntries }
-        val menu = (styled.ifEmpty { listOf(Shortcut.PLAYLISTS, Shortcut.ALBUMS, Shortcut.ARTISTS) } +
+        val menu = (listOf(Shortcut.MIXES) + styled.ifEmpty { listOf(Shortcut.PLAYLISTS, Shortcut.ALBUMS, Shortcut.ARTISTS) } +
             listOf(Shortcut.FAVOURITES, Shortcut.DOWNLOADS)).distinct()
         menu.forEach { sc ->
             item(key = "menu-$sc") { MenuRow(sc.label, shortcutIcon(sc)) { openShortcut(vm, ui, sc) } }
@@ -101,7 +106,7 @@ fun CollectionScreen(vm: AppViewModel) {
     }
 }
 
-private val menuEntries = setOf(Shortcut.PLAYLISTS, Shortcut.ALBUMS, Shortcut.ARTISTS, Shortcut.GENRES, Shortcut.FAVOURITES, Shortcut.DOWNLOADS)
+private val menuEntries = setOf(Shortcut.MIXES, Shortcut.PLAYLISTS, Shortcut.ALBUMS, Shortcut.ARTISTS, Shortcut.GENRES, Shortcut.FAVOURITES, Shortcut.DOWNLOADS)
 
 @Composable
 private fun MenuRow(title: String, icon: ImageVector, onClick: () -> Unit) {

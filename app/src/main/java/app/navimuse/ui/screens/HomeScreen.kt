@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.CircularProgressIndicator
@@ -95,6 +94,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import kotlinx.coroutines.CancellationException
 
@@ -266,7 +266,8 @@ fun shortcutIcon(sc: Shortcut): ImageVector = when (sc) {
     Shortcut.GENRES -> Icons.Filled.Category
     Shortcut.FAVOURITES -> Icons.Filled.Favorite
     Shortcut.DOWNLOADS -> Icons.Filled.OfflinePin
-    Shortcut.MIX, Shortcut.MIXES -> Icons.Filled.AutoAwesome
+    Shortcut.MIX -> Icons.Filled.AutoAwesome
+    Shortcut.MIXES -> Icons.Filled.Radio
     Shortcut.SHUFFLE -> Icons.Filled.Shuffle
 }
 
@@ -280,7 +281,8 @@ fun openShortcut(vm: AppViewModel, ui: app.navimuse.ui.components.UiActions, sc:
         Shortcut.ARTISTS -> ui.navigate(Route.Artists)
         Shortcut.FAVOURITES -> ui.navigate(Route.Favourites)
         Shortcut.DOWNLOADS -> ui.navigate(Route.Downloads)
-        Shortcut.MIX, Shortcut.MIXES -> vm.surpriseMix()
+        Shortcut.MIX -> vm.surpriseMix()
+        Shortcut.MIXES -> ui.selectTab(Tab.Mixes)
         Shortcut.SHUFFLE -> vm.shuffleAll()
     }
 }

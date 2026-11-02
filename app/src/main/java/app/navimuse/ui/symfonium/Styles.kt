@@ -93,7 +93,7 @@ enum class HomeSource(val defaultTitle: String) {
 enum class Shortcut(val label: String) {
     LIBRARY("Library"), SEARCH("Search"), SETTINGS("Settings"), PLAYLISTS("Playlists"),
     ALBUMS("Albums"), ARTISTS("Artists"), GENRES("Genres"), FAVOURITES("Favourites"),
-    DOWNLOADS("Downloads"), MIX("Surprise mix"), SHUFFLE("Shuffle all"), MIXES("Mixes"),
+    DOWNLOADS("Downloads"), MIX("Surprise mix"), SHUFFLE("Shuffle all"), MIXES("Mixes & Radio"),
 }
 
 data class AppStyle(

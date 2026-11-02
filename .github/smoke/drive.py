@@ -157,7 +157,7 @@ def login():
 
 def library():
     tap(text="Collection")
-    wait_for(text="My collection")
+    wait_for(text="Mixes & Radio")
     shot("03-collection")
     tap(text="Albums")
     wait_for(text="Square Album")
