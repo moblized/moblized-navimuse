@@ -46,9 +46,25 @@ def dump():
     return ET.fromstring("<hierarchy/>")
 
 
+def dismiss_system_dialogs(root):
+    """Taps "Wait" on an emulator "… isn't responding" popup, which otherwise covers the app."""
+    nodes = list(root.iter("node"))
+    if any("isn't responding" in n.get("text", "") for n in nodes):
+        for n in nodes:
+            if n.get("text", "") == "Wait":
+                x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+                adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+                time.sleep(2)
+                return True
+    return False
+
+
 def find(text=None, desc=None, contains=False, last=False):
     hit = None
-    for n in dump().iter("node"):
+    root = dump()
+    if dismiss_system_dialogs(root):
+        root = dump()
+    for n in root.iter("node"):
         t, d = n.get("text", ""), n.get("content-desc", "")
         if (text is not None and (t == text or (contains and text in t))) or (
             desc is not None and (d == desc or (contains and desc in d))
