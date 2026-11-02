@@ -107,7 +107,6 @@ fun HomeScreen(vm: AppViewModel) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             PageHeader("Home") {
-                IconButton(onClick = { ui.navigate(Route.Safety) }) { Icon(Icons.Filled.Shield, "Safety") }
                 IconButton(onClick = { ui.navigate(Route.SettingsPage) }) { Icon(Icons.Filled.Settings, "Settings") }
             }
         }

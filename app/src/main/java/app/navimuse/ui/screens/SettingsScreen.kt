@@ -94,6 +94,13 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                     IconButton(onClick = { confirmLogout = true }) { Icon(Icons.AutoMirrored.Filled.Logout, "Log out") }
                 },
             )
+            ListItem(
+                headlineContent = { Text("Safety") },
+                supportingContent = { Text("What this app will never do, and how to keep AudioMuse-AI from touching your files") },
+                leadingContent = { Icon(Icons.Filled.Shield, null, tint = MaterialTheme.colorScheme.secondary) },
+                trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
+                modifier = Modifier.clickable { ui.navigate(Route.Safety) },
+            )
 
             HorizontalDivider()
             Group("AudioMuse-AI (optional)")
@@ -186,13 +193,6 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             IconPackSettings(vm)
 
             HorizontalDivider(Modifier.padding(top = 8.dp))
-            ListItem(
-                headlineContent = { Text("Safety") },
-                supportingContent = { Text("What this app will never do, and how to keep AudioMuse-AI from touching your files") },
-                leadingContent = { Icon(Icons.Filled.Shield, null, tint = MaterialTheme.colorScheme.secondary) },
-                trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
-                modifier = Modifier.clickable { ui.navigate(Route.Safety) },
-            )
             Text(
                 "NaviMuse ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,

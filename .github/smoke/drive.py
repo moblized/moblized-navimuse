@@ -272,13 +272,15 @@ def dolby_album():
 
 def settings_and_dark():
     tap(text="Home")
-    tap(desc="Safety")
-    wait_for(text="This app never")
-    shot("16-safety")
-    back()
     tap(desc="Settings")
     wait_for(text="Playback")
     shot("17-settings")
+    # Safety lives in Settings now.
+    tap_node(scroll_to("Safety"))
+    wait_for(text="This app never")
+    shot("16-safety")
+    back()
+    time.sleep(1)
     tap_node(scroll_to("Dark"))
     shot("17b-settings-dark")
     time.sleep(2)
