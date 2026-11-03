@@ -488,7 +488,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         say("Saved for later: ${song.title}")
     }
 
-    val blocked: StateFlow<Blocklist.Lists> = Blocklist.lists
+    val blockedMusic: StateFlow<Blocklist.Lists> = Blocklist.lists
 
     /** Blocks a song on this phone; if it's playing, moves on to the next one. */
     fun blockSong(song: Song) {

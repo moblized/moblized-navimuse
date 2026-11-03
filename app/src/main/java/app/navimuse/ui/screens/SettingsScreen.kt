@@ -258,7 +258,7 @@ private fun PlaybackSettings(vm: AppViewModel) {
 /** Songs and artists blocked from the playing screen's menu, with a way to unblock them. */
 @Composable
 private fun BlockedRow(vm: AppViewModel) {
-    val blocked by vm.blocked.collectAsState()
+    val blocked by vm.blockedMusic.collectAsState()
     var open by remember { mutableStateOf(false) }
     val songs = blocked.songs.values.sortedBy { it.name.lowercase() }
     val artists = blocked.artists.values.sortedBy { it.name.lowercase() }
