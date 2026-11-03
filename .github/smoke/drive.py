@@ -370,7 +370,8 @@ def customize():
     time.sleep(1)
     shot("22c-customize-mini")
     back()  # Settings
-    back()  # Home
+    back()  # Collection
+    tap(text="Home")
     scroll_to("Random songs", swipes=10)
     time.sleep(2)
     shot("22d-home-customized")
