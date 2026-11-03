@@ -213,6 +213,25 @@ def now_playing():
     back()  # closes the playing screen
 
 
+def save_queue():
+    # Save what's playing (the Road trip playlist) from the queue, as you would an Instant Mix.
+    road_trip = next(p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Road trip")
+    tap(text="Sine Song 1", last=True)  # the mini player
+    wait_for(text="Playing from")
+    tap(desc="Queue")
+    tap(text="Save as playlist", contains=True)
+    wait_for(text="Save as playlist")  # the save box's title (the queue's button has an icon and spaces)
+    assert find(text="Road trip copy", contains=True) is not None, "the save box didn't suggest a name"
+    shot("11b-save-queue")
+    tap(text="Save")
+    wait_for(text="Saved playlist", contains=True, timeout=30)
+    shot("11c-queue-saved")
+    saved = [p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Road trip copy"]
+    assert saved, "the queue wasn't saved as a playlist"
+    assert saved[0]["songCount"] == road_trip["songCount"], f"saved {saved[0]['songCount']} of {road_trip['songCount']} songs"
+    back()  # closes the playing screen
+
+
 def audiomuse_tab():
     tap(text="Mixes")
     wait_for(text="Instant Mix")
@@ -444,6 +463,7 @@ for name, fn in [
     ("keep a copy of an _automatic playlist", keep_copy),
     ("play a song + now-playing report", play),
     ("now playing screen and queue", now_playing),
+    ("save the queue as a playlist", save_queue),
     ("Mixes tab", audiomuse_tab),
     ("genres", genres),
     ("search", search),

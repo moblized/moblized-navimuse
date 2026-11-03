@@ -122,6 +122,7 @@ import app.navimuse.net.Lyrics
 import app.navimuse.net.SubsonicClient
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.Route
+import app.navimuse.ui.queuePlaylistName
 import app.navimuse.ui.components.Cover
 import app.navimuse.ui.components.CoverFill
 import app.navimuse.ui.components.Load
@@ -753,13 +754,19 @@ fun QueueSheet(vm: AppViewModel, onDismiss: () -> Unit) {
     LaunchedEffect(Unit) {
         if (currentIndex > 0) listState.scrollToItem((currentIndex - 1).coerceAtLeast(0))
     }
+    val source by vm.source.collectAsState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Queue", style = MaterialTheme.typography.headlineMedium)
                 Text("${state.queue.size} tracks", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            TextButton(onClick = { ui.saveAsPlaylist(state.queue.map { it.song }, "") }) {
+            TextButton(onClick = {
+                val songs = state.queue.map { it.song }
+                // Close the queue first, so the save box isn't stacked on top of it.
+                onDismiss()
+                ui.saveAsPlaylist(songs, queuePlaylistName(source))
+            }) {
                 Icon(Icons.Filled.Save, null, modifier = Modifier.size(18.dp))
                 Text("  Save as playlist")
             }

@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,7 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -127,6 +130,7 @@ fun AppRoot(vm: AppViewModel) {
     val saveable = rememberSaveableStateHolder()
     val playerState by vm.playerState.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    var bottomBarPx by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         vm.onForeground()
@@ -179,9 +183,8 @@ fun AppRoot(vm: AppViewModel) {
                 // Each screen's header handles the status bar itself.
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 containerColor = MaterialTheme.colorScheme.background,
-                snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    Column {
+                    Column(Modifier.onSizeChanged { bottomBarPx = it.height }) {
                         if (playerState.current != null) {
                             MiniPlayer(vm, onOpen = { showPlayer = true })
                         }
@@ -226,9 +229,6 @@ fun AppRoot(vm: AppViewModel) {
                             }
                         }
                     }
-                    busy?.let {
-                        LinearProgressIndicator(Modifier.fillMaxWidth().statusBarsPadding().height(2.dp))
-                    }
                 }
             }
 
@@ -239,6 +239,25 @@ fun AppRoot(vm: AppViewModel) {
             ) {
                 NowPlayingScreen(vm, onClose = { showPlayer = false })
             }
+
+            // Messages and the busy line go on top of everything, the playing screen included,
+            // so "Saved playlist" (or what went wrong) shows wherever you are.
+            busy?.let {
+                LinearProgressIndicator(Modifier.fillMaxWidth().statusBarsPadding().height(2.dp))
+            }
+            val playerOpen = showPlayer && playerState.current != null
+            SnackbarHost(
+                snackbar,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .then(
+                        if (playerOpen) {
+                            Modifier.navigationBarsPadding().padding(bottom = 72.dp)
+                        } else {
+                            Modifier.padding(bottom = with(LocalDensity.current) { bottomBarPx.toDp() })
+                        },
+                    ),
+            )
         }
 
         playlistPickFor?.let { songs ->
