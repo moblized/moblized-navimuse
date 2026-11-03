@@ -340,7 +340,8 @@ def downloads():
 def open_customize():
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
     time.sleep(2)
-    tap(text="Home")
+    # Collection's gear: Home may be scrolled down (an app style's sections), hiding its own.
+    tap(text="Collection")
     tap(desc="Settings")
     tap_node(scroll_to("Customize"))
     wait_for(text="Accent colour")
