@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 import time
@@ -405,6 +406,12 @@ def settings_and_dark():
     adb("shell", "input", "tap", "540", "1000")
     time.sleep(2)
     shot("19b-launcher-touch")
+    # Android's own app page draws the icon without the launcher, to tell the two apart.
+    adb("shell", "am", "start", "-a", "android.settings.APPLICATION_DETAILS_SETTINGS", "-d", "package:app.navimuse")
+    time.sleep(4)
+    shot("19c-app-info")
+    adb("shell", "input", "keyevent", "3")
+    time.sleep(2)
 
 
 def downloads():
@@ -483,6 +490,39 @@ def customize():
     scroll_to("Random songs", swipes=10)
     time.sleep(2)
     shot("22d-home-customized")
+
+
+def pixel(x, y):
+    """The colour on screen at (x, y), from a raw screenshot (RGBA after a small header)."""
+    raw = subprocess.run(["adb", "exec-out", "screencap"], capture_output=True, timeout=60).stdout
+    w, h = struct.unpack("<II", raw[:8])
+    off = len(raw) - w * h * 4 + (y * w + x) * 4
+    return tuple(raw[off:off + 3])
+
+
+def fine_tune():
+    open_customize()
+    settings_tab("Fine-tune")
+    wait_for(text="Colours in dark mode")
+    shot("22e-fine-tune")
+    # Set the dark background to exactly #203040 with the hex box.
+    tap(text="Background")
+    tap(text="Hex code")
+    adb("shell", "input", "keyevent", "123")  # end of the text
+    for _ in range(6):
+        adb("shell", "input", "keyevent", "67")  # delete
+    type_text("203040")
+    tap(text="Use")
+    time.sleep(2)
+    shot("22f-fine-tune-background")
+    samples = [pixel(1075, y) for y in (700, 1100, 1500)]
+    hits = [p for p in samples if all(abs(a - b) <= 3 for a, b in zip(p, (0x20, 0x30, 0x40)))]
+    assert len(hits) >= 2, f"the background isn't #203040: {samples}"
+    # Back to normal for the rest of the test.
+    tap_node(scroll_to("Reset fine-tuning", swipes=14))
+    tap(text="Reset")
+    time.sleep(1)
+    back()
 
 
 NIGHT_DRIVE = {
@@ -623,6 +663,7 @@ for name, fn in [
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
     ("customize look and layout", customize),
+    ("fine-tune: exact background colour", fine_tune),
     ("import a Symfonium colour theme", symfonium_theme),
     ("import Symfonium app and now-playing styles", symfonium_styles),
     ("background playback", background_playback),

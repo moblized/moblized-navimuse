@@ -77,6 +77,7 @@ private enum class SettingsTab(val label: String) {
     LOOK("Look"),
     LAYOUT("Layout"),
     PLAYER("Player"),
+    FINE_TUNE("Fine-tune"),
 }
 
 @Composable
@@ -88,7 +89,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val pager = rememberPagerState { tabs.size }
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
-    val onLookTab = tabs[pager.currentPage] in setOf(SettingsTab.LOOK, SettingsTab.LAYOUT, SettingsTab.PLAYER)
+    val onLookTab = tabs[pager.currentPage] in setOf(SettingsTab.LOOK, SettingsTab.LAYOUT, SettingsTab.PLAYER, SettingsTab.FINE_TUNE)
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -122,6 +123,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                     SettingsTab.LOOK -> LookSettings(vm)
                     SettingsTab.LAYOUT -> LayoutSettings(vm)
                     SettingsTab.PLAYER -> PlayerSettings(vm)
+                    SettingsTab.FINE_TUNE -> FineTuneSettings(vm)
                 }
             }
         }

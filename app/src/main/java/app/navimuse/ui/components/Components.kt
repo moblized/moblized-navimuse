@@ -439,7 +439,7 @@ fun SongRow(
                     }
                 }
                 .clickable(onClick = onPlay)
-                .padding(start = 16.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
+                .padding(start = 16.dp, end = 4.dp, top = LocalLook.current.rowPadding.dp, bottom = LocalLook.current.rowPadding.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (showArt) {
@@ -539,7 +539,7 @@ fun MenuItem(text: String, icon: ImageVector, onClick: () -> Unit) {
 
 /** An album in a sideways shelf. */
 @Composable
-fun AlbumCard(album: Album, modifier: Modifier = Modifier, width: Dp = LocalLook.current.cardSize.dp.dp, onClick: () -> Unit) {
+fun AlbumCard(album: Album, modifier: Modifier = Modifier, width: Dp = LocalLook.current.cardWidth.dp, onClick: () -> Unit) {
     Column(modifier.width(width).clickable(onClick = onClick)) {
         Cover(album.coverArt, size = width, placeholder = Icons.Filled.Album, seed = album.name)
         Spacer(Modifier.height(8.dp))
@@ -624,7 +624,7 @@ fun PlaylistRow(playlist: Playlist, modifier: Modifier = Modifier, onClick: () -
 
 /** A playlist in a sideways shelf. */
 @Composable
-fun PlaylistCard(playlist: Playlist, modifier: Modifier = Modifier, width: Dp = LocalLook.current.cardSize.dp.dp, onClick: () -> Unit) {
+fun PlaylistCard(playlist: Playlist, modifier: Modifier = Modifier, width: Dp = LocalLook.current.cardWidth.dp, onClick: () -> Unit) {
     Column(modifier.width(width).clickable(onClick = onClick)) {
         Cover(playlist.coverArt, size = width, placeholder = Icons.AutoMirrored.Filled.QueueMusic, seed = playlist.name)
         Spacer(Modifier.height(8.dp))

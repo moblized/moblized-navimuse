@@ -193,8 +193,11 @@ fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
     // A Symfonium style's floating player, or the one picked in Customize.
     val styleFloats = st?.miniFloating == true
     val floating = styleFloats || look.miniStyle == MiniStyle.FLOATING
-    val corner = if (styleFloats) st!!.miniCornerPercent.coerceAtLeast(8) else 22
-    val shape = if (floating) RoundedCornerShape(percent = corner) else RectangleShape
+    val shape = when {
+        !floating -> RectangleShape
+        styleFloats -> RoundedCornerShape(percent = st!!.miniCornerPercent.coerceAtLeast(8))
+        else -> RoundedCornerShape(look.miniCorner.dp)
+    }
     val marginH = if (styleFloats) st!!.miniMarginH else 0
     val marginBottom = if (styleFloats) st!!.miniMarginBottom else 0
     val swipe = look.miniSwipe && st?.swipeToSkip != false
@@ -223,7 +226,7 @@ fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
                 ) {
                     Cover(
                         song.coverArt,
-                        size = 44.dp,
+                        size = look.miniArt.dp,
                         seed = song.album.ifBlank { song.title },
                         shape = st?.takeIf { styleFloats }?.let { RoundedCornerShape(percent = it.miniThumbCornerPercent) } ?: ArtShape,
                     )
@@ -409,7 +412,7 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
 
                 val elements = st?.elements
                 // A style's seek bar size wins when it sets one; Customize's otherwise.
-                val seekScale = st?.sliderScale?.takeIf { it != 1f } ?: look.seekBar.scale
+                val seekScale = st?.sliderScale?.takeIf { it != 1f } ?: look.seekScale
                 val showTimes = (st?.sliderTimes ?: true) && look.showTimes
                 if (elements == null) {
                     TitleBlock(vm, song, starred, look.titleAlign)
@@ -655,13 +658,13 @@ private fun ColumnScope.NowPlayingArt(
     val shape = when {
         record -> CircleShape
         st?.coverCornerPercent != null -> RoundedCornerShape(percent = st.coverCornerPercent)
-        look.playerArt == PlayerArt.CIRCLE -> CircleShape
-        else -> RoundedCornerShape(look.playerArt.cornerDp.dp)
+        look.playerArtCorner == null -> CircleShape
+        else -> RoundedCornerShape(look.playerArtCorner!!.dp)
     }
     Box(
         Modifier
             .align(Alignment.CenterHorizontally)
-            .padding(horizontal = (st?.coverMarginH ?: look.artSize.marginDp).dp)
+            .padding(horizontal = (st?.coverMarginH ?: look.playerArtMargin).dp)
             .fillMaxWidth()
             .widthIn(max = 440.dp)
             .aspectRatio(1f)
@@ -862,36 +865,36 @@ private fun ControlButtons(vm: AppViewModel, state: PlayerUiState, look: Look) {
                 )
             }
         }
-        IconButton(onClick = { vm.player.previous() }, modifier = Modifier.size(64.dp)) {
-            Icon(Icons.Filled.SkipPrevious, "Previous", modifier = Modifier.size(44.dp))
+        IconButton(onClick = { vm.player.previous() }, modifier = Modifier.size((look.controlIcon + 20).dp)) {
+            Icon(Icons.Filled.SkipPrevious, "Previous", modifier = Modifier.size(look.controlIcon.dp))
         }
         Box(contentAlignment = Alignment.Center) {
             if (look.playButton == PlayButtonStyle.CIRCLE) {
                 // A solid round button, the icon cut out of it.
                 Box(
-                    Modifier.size(78.dp).clip(CircleShape).background(scheme.onSurface).clickable { vm.player.togglePlay() },
+                    Modifier.size(look.playButtonSize.dp).clip(CircleShape).background(scheme.onSurface).clickable { vm.player.togglePlay() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         if (state.isPlaying) "Pause" else "Play",
                         tint = scheme.background,
-                        modifier = Modifier.size(46.dp),
+                        modifier = Modifier.size((look.playButtonSize * 0.59f).dp),
                     )
                 }
             } else {
-                IconButton(onClick = { vm.player.togglePlay() }, modifier = Modifier.size(88.dp)) {
+                IconButton(onClick = { vm.player.togglePlay() }, modifier = Modifier.size(look.playButtonSize.dp)) {
                     Icon(
                         if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         if (state.isPlaying) "Pause" else "Play",
-                        modifier = Modifier.size(72.dp),
+                        modifier = Modifier.size((look.playButtonSize * 0.82f).dp),
                     )
                 }
             }
-            if (state.buffering) CircularProgressIndicator(Modifier.size(84.dp), strokeWidth = 2.dp, color = scheme.accent)
+            if (state.buffering) CircularProgressIndicator(Modifier.size((look.playButtonSize - 4).dp), strokeWidth = 2.dp, color = scheme.accent)
         }
-        IconButton(onClick = { vm.player.next() }, enabled = state.hasNext, modifier = Modifier.size(64.dp)) {
-            Icon(Icons.Filled.SkipNext, "Next", modifier = Modifier.size(44.dp))
+        IconButton(onClick = { vm.player.next() }, enabled = state.hasNext, modifier = Modifier.size((look.controlIcon + 20).dp)) {
+            Icon(Icons.Filled.SkipNext, "Next", modifier = Modifier.size(look.controlIcon.dp))
         }
         if (look.showShuffleRepeat) {
             Box(

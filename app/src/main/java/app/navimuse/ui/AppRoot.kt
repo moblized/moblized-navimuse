@@ -90,6 +90,7 @@ import app.navimuse.ui.screens.SafetyScreen
 import app.navimuse.ui.screens.SearchScreen
 import app.navimuse.ui.screens.SettingsScreen
 import app.navimuse.ui.screens.SimilarScreen
+import app.navimuse.ui.theme.LocalLook
 
 /** [packKey] is the Symfonium icon-pack key; ".selected" is added for the current tab. */
 enum class Tab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector, val packKey: String, val packKeyHasSelected: Boolean = true) {
@@ -327,7 +328,7 @@ private fun BottomTabs(tabs: List<Tab>, labels: TabLabels, selected: Tab, onSele
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .navigationBarsPadding()
-            .height(62.dp),
+            .height(LocalLook.current.tabBarHeight.dp),
     ) {
         tabs.forEach { t ->
             val on = t == selected
@@ -343,7 +344,7 @@ private fun BottomTabs(tabs: List<Tab>, labels: TabLabels, selected: Tab, onSele
                     // Without a label, the icon says which tab it is.
                     if (showLabel) null else t.label,
                     tint = color,
-                    modifier = Modifier.size(if (showLabel) 24.dp else 27.dp),
+                    modifier = Modifier.size((LocalLook.current.tabIcon + if (showLabel) 0 else 3).dp),
                     key = if (on && t.packKeyHasSelected) "${t.packKey}.selected" else t.packKey,
                 )
                 if (showLabel) {

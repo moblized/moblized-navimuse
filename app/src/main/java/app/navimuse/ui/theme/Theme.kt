@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.ColorUtils
 import app.navimuse.data.Accent
+import app.navimuse.data.ColorRole
 import app.navimuse.data.DarkShade
 import app.navimuse.data.FontChoice
 import app.navimuse.data.Look
@@ -170,12 +171,14 @@ private fun typographyFor(look: Look): Typography {
     }
     val narrow = look.font == FontChoice.INSTRUMENT && look.titleFont == TitleFont.CONDENSED
     val titles = if (narrow) Condensed else body
-    val k = look.textSize.scale
+    val k = look.effectiveTextScale
+    // Page titles and names can be sized on their own in Fine-tune.
+    val kt = k * look.effectiveTitleScale
     fun display(size: Int, line: Int, tracking: Double) = TextStyle(
         fontFamily = titles,
         fontWeight = FontWeight.Bold,
-        fontSize = (size * k).sp,
-        lineHeight = (line * k).sp,
+        fontSize = (size * kt).sp,
+        lineHeight = (line * kt).sp,
         // Tight tracking suits the narrow cut; wider fonts get less of it.
         letterSpacing = (if (narrow) tracking else tracking * 0.4).sp,
     )
@@ -218,10 +221,12 @@ val LocalLook = staticCompositionLocalOf { Look() }
 
 private val artShapes = app.navimuse.data.Corners.entries.associateWith { RoundedCornerShape(it.dp.dp) }
 
-/** Corner of album art, as chosen in Customize (nearly square by default, like a record sleeve). */
+/** Corner of album art, as chosen in Settings (nearly square by default, like a record sleeve). */
 val ArtShape: Shape
     @Composable @ReadOnlyComposable
-    get() = artShapes.getValue(LocalLook.current.corners)
+    get() = LocalLook.current.let { look ->
+        look.artCornerDp?.let { RoundedCornerShape(it.dp) } ?: artShapes.getValue(look.corners)
+    }
 
 /** Green used for the "protected" safety badges. */
 val SafeGreenLight = Color(0xFF1B7F4B)
@@ -291,6 +296,38 @@ fun themedScheme(base: ColorScheme, roles: Map<String, Long>, dark: Boolean): Co
     )
 }
 
+private fun onColor(c: Color): Color = if (c.luminance() > 0.5f) Color.Black else Color.White
+
+/**
+ * Exact colours from Settings → Fine-tune laid over the scheme. Shades a role implies (the
+ * lighter and darker cards, the fainter lines) are worked out from the colour picked.
+ */
+fun ColorScheme.withOverrides(o: Map<ColorRole, Long>): ColorScheme {
+    if (o.isEmpty()) return this
+    var s = this
+    o[ColorRole.ACCENT]?.let { s = s.withAccent(Color(it)) }
+    o[ColorRole.BUTTONS]?.let { val c = Color(it); s = s.copy(primary = c, onPrimary = onColor(c)) }
+    o[ColorRole.BACKGROUND]?.let { val c = Color(it); s = s.copy(background = c, surface = c, surfaceDim = c, surfaceContainerLowest = c) }
+    o[ColorRole.TEXT]?.let { val c = Color(it); s = s.copy(onBackground = c, onSurface = c, onPrimaryContainer = c, onSecondaryContainer = c, inverseSurface = c) }
+    o[ColorRole.CARDS]?.let {
+        val c = Color(it)
+        val text = s.onSurface
+        s = s.copy(
+            surfaceContainer = c,
+            surfaceContainerLow = lerp(c, s.background, 0.4f),
+            surfaceContainerHigh = lerp(c, text, 0.05f),
+            surfaceContainerHighest = lerp(c, text, 0.1f),
+            surfaceVariant = lerp(c, text, 0.04f),
+            surfaceBright = lerp(c, text, 0.12f),
+            secondaryContainer = lerp(c, text, 0.06f),
+            primaryContainer = lerp(c, text, 0.08f),
+        )
+    }
+    o[ColorRole.SECONDARY_TEXT]?.let { s = s.copy(onSurfaceVariant = Color(it)) }
+    o[ColorRole.LINES]?.let { val c = Color(it); s = s.copy(outline = c, outlineVariant = lerp(c, s.background, 0.45f)) }
+    return s
+}
+
 /** [color] with text on it in black or white, whichever reads better. */
 fun ColorScheme.withAccent(color: Color): ColorScheme =
     copy(secondary = color, onSecondary = if (color.luminance() > 0.5f) Color.Black else Color.White)
@@ -338,8 +375,8 @@ fun AppTheme(
             (if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)).primary
         else -> null
     }
-    val scheme = accent?.let { themed.withAccent(it) } ?: themed
-    val typography = remember(look.font, look.titleFont, look.textSize) { typographyFor(look) }
+    val scheme = (accent?.let { themed.withAccent(it) } ?: themed).withOverrides(look.colors(dark))
+    val typography = remember(look.font, look.titleFont, look.effectiveTextScale, look.effectiveTitleScale) { typographyFor(look) }
     CompositionLocalProvider(LocalLook provides look) {
         MaterialTheme(
             colorScheme = scheme,

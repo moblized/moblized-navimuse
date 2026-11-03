@@ -110,6 +110,17 @@ enum class CollectionEntry(val label: String) {
 /** The bottom tabs. Home and Collection hold the Settings button, so one of them always stays. */
 enum class TabChoice(val label: String) { HOME("Home"), MIXES("Mixes"), SEARCH("Search"), COLLECTION("Collection") }
 
+/** Colours that can be set exactly in Settings → Fine-tune, separately for dark and light mode. */
+enum class ColorRole(val label: String, val detail: String) {
+    ACCENT("Accent", "What's playing, quality badges, switches"),
+    BUTTONS("Main buttons", "Play, Save and other filled buttons"),
+    BACKGROUND("Background", "Behind every page"),
+    CARDS("Cards and sheets", "Mini player, menus, the search box"),
+    TEXT("Text", "Titles and names"),
+    SECONDARY_TEXT("Secondary text", "Artists, times, hints"),
+    LINES("Lines", "Dividers and outlines"),
+}
+
 data class Look(
     // colours
     val accent: Accent = Accent.THEME,
@@ -155,7 +166,64 @@ data class Look(
     val miniPrevious: Boolean = false,
     val miniNext: Boolean = true,
     val miniSwipe: Boolean = true,
+    // fine-tuning: null follows the choices above
+    val textScale: Float? = null,
+    val titleScale: Float? = null,
+    val artCornerDp: Int? = null,
+    val cardSizeDp: Int? = null,
+    val rowPaddingDp: Int? = null,
+    val playerArtCornerDp: Int? = null,
+    val playerArtMarginDp: Int? = null,
+    val seekBarScale: Float? = null,
+    val playButtonDp: Int? = null,
+    val controlIconDp: Int? = null,
+    val miniArtDp: Int? = null,
+    val miniCornerDp: Int? = null,
+    val tabBarHeightDp: Int? = null,
+    val tabIconDp: Int? = null,
+    /** Exact colours (ARGB) by role, for the dark and the light look. */
+    val colorsDark: Map<ColorRole, Long> = emptyMap(),
+    val colorsLight: Map<ColorRole, Long> = emptyMap(),
 ) {
+    // What's actually used: a fine-tuned value, else the preset chosen above.
+    val effectiveTextScale: Float get() = textScale ?: textSize.scale
+    val effectiveTitleScale: Float get() = titleScale ?: 1f
+    val artCorner: Int get() = artCornerDp ?: corners.dp
+    val cardWidth: Int get() = cardSizeDp ?: cardSize.dp
+    val rowPadding: Int get() = rowPaddingDp ?: 7
+    /** Corner of the playing screen's art, or null for a circle (circle or record). */
+    val playerArtCorner: Int?
+        get() = if (playerArt == PlayerArt.CIRCLE || playerArt == PlayerArt.RECORD) null else playerArtCornerDp ?: playerArt.cornerDp
+    val playerArtMargin: Int get() = playerArtMarginDp ?: artSize.marginDp
+    val seekScale: Float get() = seekBarScale ?: seekBar.scale
+    val playButtonSize: Int get() = playButtonDp ?: if (playButton == PlayButtonStyle.CIRCLE) 78 else 88
+    val controlIcon: Int get() = controlIconDp ?: 44
+    val miniArt: Int get() = miniArtDp ?: 44
+    val miniCorner: Int get() = miniCornerDp ?: 14
+    val tabBarHeight: Int get() = tabBarHeightDp ?: 62
+    val tabIcon: Int get() = tabIconDp ?: 24
+
+    fun colors(dark: Boolean): Map<ColorRole, Long> = if (dark) colorsDark else colorsLight
+
+    fun withColor(dark: Boolean, role: ColorRole, argb: Long?): Look {
+        val now = colors(dark).let { if (argb == null) it - role else it + (role to argb) }
+        return if (dark) copy(colorsDark = now) else copy(colorsLight = now)
+    }
+
+    val isFineTuned: Boolean
+        get() = listOf<Any?>(
+            textScale, titleScale, artCornerDp, cardSizeDp, rowPaddingDp, playerArtCornerDp, playerArtMarginDp,
+            seekBarScale, playButtonDp, controlIconDp, miniArtDp, miniCornerDp, tabBarHeightDp, tabIconDp,
+        ).any { it != null } || colorsDark.isNotEmpty() || colorsLight.isNotEmpty()
+
+    /** The same choices without any fine-tuning. */
+    fun withoutFineTuning(): Look = copy(
+        textScale = null, titleScale = null, artCornerDp = null, cardSizeDp = null, rowPaddingDp = null,
+        playerArtCornerDp = null, playerArtMarginDp = null, seekBarScale = null, playButtonDp = null,
+        controlIconDp = null, miniArtDp = null, miniCornerDp = null, tabBarHeightDp = null, tabIconDp = null,
+        colorsDark = emptyMap(), colorsLight = emptyMap(),
+    )
+
     /** Fixes choices that can't work together: no tabs, or none with a way into Settings. */
     fun sanitized(): Look {
         var t = tabs.distinct()
@@ -166,6 +234,20 @@ data class Look(
             home = home.distinct(),
             collection = collection.distinct(),
             gridColumns = gridColumns.coerceIn(0, 6),
+            textScale = textScale?.coerceIn(TEXT_SCALE),
+            titleScale = titleScale?.coerceIn(TITLE_SCALE),
+            artCornerDp = artCornerDp?.coerceIn(ART_CORNER),
+            cardSizeDp = cardSizeDp?.coerceIn(CARD_SIZE),
+            rowPaddingDp = rowPaddingDp?.coerceIn(ROW_PADDING),
+            playerArtCornerDp = playerArtCornerDp?.coerceIn(PLAYER_ART_CORNER),
+            playerArtMarginDp = playerArtMarginDp?.coerceIn(PLAYER_ART_MARGIN),
+            seekBarScale = seekBarScale?.coerceIn(SEEK_SCALE),
+            playButtonDp = playButtonDp?.coerceIn(PLAY_BUTTON),
+            controlIconDp = controlIconDp?.coerceIn(CONTROL_ICON),
+            miniArtDp = miniArtDp?.coerceIn(MINI_ART),
+            miniCornerDp = miniCornerDp?.coerceIn(MINI_CORNER),
+            tabBarHeightDp = tabBarHeightDp?.coerceIn(TAB_BAR),
+            tabIconDp = tabIconDp?.coerceIn(TAB_ICON),
         )
     }
 
@@ -204,9 +286,61 @@ data class Look(
         put("miniPrevious", miniPrevious)
         put("miniNext", miniNext)
         put("miniSwipe", miniSwipe)
+        textScale?.let { put("textScale", it.toDouble()) }
+        titleScale?.let { put("titleScale", it.toDouble()) }
+        artCornerDp?.let { put("artCornerDp", it) }
+        cardSizeDp?.let { put("cardSizeDp", it) }
+        rowPaddingDp?.let { put("rowPaddingDp", it) }
+        playerArtCornerDp?.let { put("playerArtCornerDp", it) }
+        playerArtMarginDp?.let { put("playerArtMarginDp", it) }
+        seekBarScale?.let { put("seekBarScale", it.toDouble()) }
+        playButtonDp?.let { put("playButtonDp", it) }
+        controlIconDp?.let { put("controlIconDp", it) }
+        miniArtDp?.let { put("miniArtDp", it) }
+        miniCornerDp?.let { put("miniCornerDp", it) }
+        tabBarHeightDp?.let { put("tabBarHeightDp", it) }
+        tabIconDp?.let { put("tabIconDp", it) }
+        if (colorsDark.isNotEmpty()) put("colorsDark", colorsJson(colorsDark))
+        if (colorsLight.isNotEmpty()) put("colorsLight", colorsJson(colorsLight))
     }.toString()
 
     companion object {
+        // Slider ranges in Fine-tune.
+        val TEXT_SCALE = 0.75f..1.6f
+        val TITLE_SCALE = 0.7f..1.5f
+        val ART_CORNER = 0..40
+        val CARD_SIZE = 100..240
+        val ROW_PADDING = 2..18
+        val PLAYER_ART_CORNER = 0..60
+        val PLAYER_ART_MARGIN = 0..120
+        val SEEK_SCALE = 0.5f..3f
+        val PLAY_BUTTON = 56..120
+        val CONTROL_ICON = 28..64
+        val MINI_ART = 32..72
+        val MINI_CORNER = 0..36
+        val TAB_BAR = 48..88
+        val TAB_ICON = 18..34
+
+        /** "#AARRGGBB" for each role. */
+        private fun colorsJson(map: Map<ColorRole, Long>) = JSONObject().apply {
+            map.forEach { (role, argb) -> put(role.name, "#%08X".format(argb and 0xFFFFFFFFL)) }
+        }
+
+        private fun JSONObject.colors(key: String): Map<ColorRole, Long> {
+            val o = optJSONObject(key) ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { k ->
+                val role = runCatching { enumValueOf<ColorRole>(k) }.getOrNull() ?: return@mapNotNull null
+                val hex = o.optString(k).removePrefix("#")
+                val v = hex.toLongOrNull(16) ?: return@mapNotNull null
+                role to (if (hex.length <= 6) v or 0xFF000000L else v)
+            }.toMap()
+        }
+
+        private fun JSONObject.floatOrNull(key: String): Float? =
+            if (has(key)) optDouble(key).toFloat().takeIf { !it.isNaN() } else null
+
+        private fun JSONObject.intOrNull(key: String): Int? = if (has(key)) optInt(key) else null
+
         val DEFAULT_HOME = listOf(
             HomeSection.SHORTCUTS,
             HomeSection.RECENTLY_PLAYED,
@@ -264,6 +398,22 @@ data class Look(
                 miniPrevious = o.optBoolean("miniPrevious", d.miniPrevious),
                 miniNext = o.optBoolean("miniNext", d.miniNext),
                 miniSwipe = o.optBoolean("miniSwipe", d.miniSwipe),
+                textScale = o.floatOrNull("textScale"),
+                titleScale = o.floatOrNull("titleScale"),
+                artCornerDp = o.intOrNull("artCornerDp"),
+                cardSizeDp = o.intOrNull("cardSizeDp"),
+                rowPaddingDp = o.intOrNull("rowPaddingDp"),
+                playerArtCornerDp = o.intOrNull("playerArtCornerDp"),
+                playerArtMarginDp = o.intOrNull("playerArtMarginDp"),
+                seekBarScale = o.floatOrNull("seekBarScale"),
+                playButtonDp = o.intOrNull("playButtonDp"),
+                controlIconDp = o.intOrNull("controlIconDp"),
+                miniArtDp = o.intOrNull("miniArtDp"),
+                miniCornerDp = o.intOrNull("miniCornerDp"),
+                tabBarHeightDp = o.intOrNull("tabBarHeightDp"),
+                tabIconDp = o.intOrNull("tabIconDp"),
+                colorsDark = o.colors("colorsDark"),
+                colorsLight = o.colors("colorsLight"),
             ).sanitized()
         }
 

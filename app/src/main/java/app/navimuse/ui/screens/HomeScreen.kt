@@ -231,7 +231,7 @@ private fun StyleAlbums(vm: AppViewModel, title: String?, row: HomeRow, type: Al
     if (s is Load.Ok && s.value.isEmpty()) return
     title?.let { SectionHeader(it, action = "View all") { ui.navigate(Route.AlbumGrid(type)) } }
     when (s) {
-        is Load.Loading -> ShelfPlaceholder(LocalLook.current.cardSize.dp)
+        is Load.Loading -> ShelfPlaceholder(LocalLook.current.cardWidth)
         is Load.Failed -> ErrorBox(s.message, loaded.retry)
         is Load.Ok -> if (row.gridRows > 1) {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -315,7 +315,7 @@ private fun MixesForYou(vm: AppViewModel) {
     }
     SectionHeader("Your Instant Mixes")
     when (val s = loaded.state) {
-        is Load.Loading -> ShelfPlaceholder(LocalLook.current.cardSize.dp + 16)
+        is Load.Loading -> ShelfPlaceholder(LocalLook.current.cardWidth + 16)
         is Load.Failed -> ErrorBox(s.message, loaded.retry)
         is Load.Ok -> if (s.value.isEmpty()) {
             EmptyBox("Play some music and mixes will show up here.")
@@ -332,7 +332,7 @@ private fun MixesForYou(vm: AppViewModel) {
 private fun MixCard(album: Album, onClick: () -> Unit) {
     val art = rememberArtColor(album.coverArt, album.name)
     val wash = stageColor(art, dark = true)
-    val size = (LocalLook.current.cardSize.dp + 16).dp
+    val size = (LocalLook.current.cardWidth + 16).dp
     Column(Modifier.width(size).clickable(onClick = onClick)) {
         Box(Modifier.size(size).clip(ArtShape)) {
             Cover(album.coverArt, size = size, shape = RectangleShape, placeholder = Icons.Filled.Album, seed = album.name)

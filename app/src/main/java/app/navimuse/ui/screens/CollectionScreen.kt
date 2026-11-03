@@ -76,6 +76,7 @@ import app.navimuse.ui.components.SectionHeader
 import app.navimuse.ui.components.SongRow
 import app.navimuse.ui.components.rememberLoad
 import app.navimuse.ui.symfonium.Shortcut
+import app.navimuse.ui.theme.LocalLook
 import kotlinx.coroutines.delay
 
 /** Your library as a short menu, then what you played lately. */
@@ -116,7 +117,7 @@ private val menuEntries = setOf(Shortcut.MIXES, Shortcut.PLAYLISTS, Shortcut.ALB
 @Composable
 private fun MenuRow(title: String, icon: ImageVector, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = (LocalLook.current.rowPadding + 3).dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -133,7 +134,7 @@ private fun MenuRow(title: String, icon: ImageVector, onClick: () -> Unit) {
 @Composable
 private fun AlbumLine(album: Album, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 7.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = LocalLook.current.rowPadding.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Cover(album.coverArt, size = 56.dp, placeholder = Icons.Filled.Album, seed = album.name)

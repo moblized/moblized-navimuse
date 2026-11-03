@@ -2,6 +2,7 @@ package app.navimuse
 
 import app.navimuse.data.Accent
 import app.navimuse.data.CollectionEntry
+import app.navimuse.data.ColorRole
 import app.navimuse.data.Corners
 import app.navimuse.data.FontChoice
 import app.navimuse.data.HomeSection
@@ -56,6 +57,56 @@ class LookTest {
         assertEquals(Accent.THEME, look.accent)
         assertEquals(FontChoice.SERIF, look.font)
         assertEquals(listOf(HomeSection.MIXES, HomeSection.DISCOVER), look.home)
+    }
+
+    @Test
+    fun fineTuningSurvivesSaving() {
+        val look = Look(
+            textScale = 1.3f,
+            titleScale = 0.9f,
+            artCornerDp = 18,
+            cardSizeDp = 200,
+            rowPaddingDp = 12,
+            playerArtCornerDp = 30,
+            playerArtMarginDp = 60,
+            seekBarScale = 2.5f,
+            playButtonDp = 100,
+            controlIconDp = 50,
+            miniArtDp = 60,
+            miniCornerDp = 24,
+            tabBarHeightDp = 70,
+            tabIconDp = 30,
+            colorsDark = mapOf(ColorRole.BACKGROUND to 0xFF203040L, ColorRole.ACCENT to 0xFFFF5500L),
+            colorsLight = mapOf(ColorRole.TEXT to 0xFF111111L),
+        )
+        assertEquals(look, Look.fromJson(look.toJson()))
+        assertTrue(look.isFineTuned)
+        assertEquals(1.3f, look.effectiveTextScale)
+        assertEquals(200, look.cardWidth)
+    }
+
+    @Test
+    fun withoutFineTuningKeepsTheChoices() {
+        val look = Look(accent = Accent.PINK, cardSizeDp = 200, colorsDark = mapOf(ColorRole.TEXT to 0xFFFFFFFFL))
+        val plain = look.withoutFineTuning()
+        assertEquals(Look(accent = Accent.PINK), plain)
+        assertEquals(false, plain.isFineTuned)
+        assertEquals(156, plain.cardWidth)
+    }
+
+    @Test
+    fun fineTuningIsKeptInRangeAndHexWithoutAlphaIsOpaque() {
+        val look = Look.fromJson("""{"cardSizeDp":5000,"textScale":9,"colorsDark":{"BACKGROUND":"#203040","NOPE":"#FFFFFF"}}""")
+        assertEquals(Look.CARD_SIZE.last, look.cardSizeDp)
+        assertEquals(Look.TEXT_SCALE.endInclusive, look.textScale)
+        assertEquals(mapOf(ColorRole.BACKGROUND to 0xFF203040L), look.colorsDark)
+    }
+
+    @Test
+    fun aCircleHasNoCorners() {
+        assertEquals(null, Look(playerArt = PlayerArt.CIRCLE, playerArtCornerDp = 20).playerArtCorner)
+        assertEquals(20, Look(playerArt = PlayerArt.SOFT, playerArtCornerDp = 20).playerArtCorner)
+        assertEquals(PlayerArt.SOFT.cornerDp, Look(playerArt = PlayerArt.SOFT).playerArtCorner)
     }
 
     @Test

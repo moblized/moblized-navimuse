@@ -471,7 +471,7 @@ private fun <T> List<T>.moved(from: Int, to: Int): List<T> {
 }
 
 @Composable
-private fun Hint(text: String) {
+internal fun Hint(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.bodySmall,
