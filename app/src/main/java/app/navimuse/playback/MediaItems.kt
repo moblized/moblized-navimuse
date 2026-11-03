@@ -65,6 +65,11 @@ object Extras {
 fun streamKey(songId: String, maxBitRateKbps: Int): String =
     if (Downloads.isDownloaded(songId)) Downloads.key(songId) else "$songId@$maxBitRateKbps"
 
+/** Keys Android Auto reads from a song's details (androidx.media MediaConstants / MediaDescriptionCompat). */
+private const val AUTO_IS_EXPLICIT = "android.media.IS_EXPLICIT"
+private const val AUTO_DOWNLOAD_STATUS = "android.media.extra.DOWNLOAD_STATUS"
+private const val AUTO_DOWNLOADED = 2L
+
 fun Song.toMediaItem(api: SubsonicClient, maxBitRateKbps: Int, context: String? = null): MediaItem {
     val extras = Bundle().apply {
         putString(Extras.SONG_ID, id)
@@ -80,6 +85,9 @@ fun Song.toMediaItem(api: SubsonicClient, maxBitRateKbps: Int, context: String? 
         putInt(Extras.BIT_DEPTH, bitDepth)
         putLong(Extras.SIZE, size)
         putBoolean(Extras.EXPLICIT, explicit)
+        // Android Auto's "E" badge, and its "downloaded" mark.
+        if (explicit) putLong(AUTO_IS_EXPLICIT, 1L)
+        if (Downloads.isDownloaded(id)) putLong(AUTO_DOWNLOAD_STATUS, AUTO_DOWNLOADED)
     }
     val meta = MediaMetadata.Builder()
         .setTitle(title)

@@ -7,6 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import app.navimuse.NaviMuseApp
 import app.navimuse.net.Song
@@ -83,6 +84,15 @@ class PlayerConnection(private val app: NaviMuseApp) {
         pending?.cancel(true)
         pending = null
         _state.value = PlayerUiState()
+    }
+
+    /** Tells the player a song was (un)favourited in the app, so Android Auto's heart matches. */
+    fun markStarred(songId: String, starred: Boolean) = withController { c ->
+        val args = android.os.Bundle().apply {
+            putString("id", songId)
+            putBoolean("starred", starred)
+        }
+        c.sendCustomCommand(SessionCommand(PlaybackService.ACTION_SET_STARRED, android.os.Bundle.EMPTY), args)
     }
 
     private fun withController(action: (MediaController) -> Unit) {

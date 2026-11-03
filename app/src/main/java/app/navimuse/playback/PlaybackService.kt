@@ -22,6 +22,11 @@ import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionError
+import androidx.media3.session.CommandButton
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import android.os.Bundle
+import kotlinx.coroutines.launch
 import app.navimuse.BuildConfig
 import app.navimuse.MainActivity
 import app.navimuse.NaviMuseApp
@@ -80,6 +85,7 @@ class PlaybackService : MediaLibraryService() {
         )
         session = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setSessionActivity(open)
+            .setMediaButtonPreferences(buttons())
             .build()
 
         scrobbler = Scrobbler(player, scope, app).also { it.start() }
@@ -100,6 +106,12 @@ class PlaybackService : MediaLibraryService() {
                 val label = Dolby.fromMime(format.sampleMimeType, format.channelCount) ?: return
                 player.currentMediaItem?.toSong()?.let { Dolby.learn(it, label) }
             }
+        })
+        // Keep the car's (and notification's) favourite, shuffle and repeat buttons in step.
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = refreshButtons()
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = refreshButtons()
+            override fun onRepeatModeChanged(repeatMode: Int) = refreshButtons()
         })
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = memory.save(player)
@@ -167,6 +179,99 @@ class PlaybackService : MediaLibraryService() {
         player.release()
         scope.cancel()
         super.onDestroy()
+    }
+
+    // --- Android Auto and notification buttons ----------------------------------------------
+
+    /** Favourites changed from the car or the notification, ahead of the song's own details. */
+    private val starredNow = HashMap<String, Boolean>()
+
+    private fun currentStarred(): Boolean {
+        val song = player.currentMediaItem?.toSong() ?: return false
+        return starredNow[song.id] ?: song.starred
+    }
+
+    /**
+     * The buttons beside play/pause in Android Auto (and in the phone's media controls), like
+     * Tidal's: favourite, shuffle, repeat and radio (an Instant Mix from what's playing).
+     */
+    private fun buttons(): ImmutableList<CommandButton> {
+        val starred = currentStarred()
+        val shuffle = player.shuffleModeEnabled
+        val repeat = player.repeatMode
+        fun button(icon: Int, name: String, command: SessionCommand) =
+            CommandButton.Builder(icon)
+                .setDisplayName(name)
+                .setSessionCommand(command)
+                .setSlots(CommandButton.SLOT_OVERFLOW)
+                .build()
+        return ImmutableList.of(
+            button(
+                if (starred) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED,
+                if (starred) "Remove from favourites" else "Add to favourites",
+                FAVOURITE,
+            ),
+            button(if (shuffle) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF, if (shuffle) "Shuffle on" else "Shuffle", SHUFFLE),
+            button(
+                when (repeat) {
+                    Player.REPEAT_MODE_ONE -> CommandButton.ICON_REPEAT_ONE
+                    Player.REPEAT_MODE_ALL -> CommandButton.ICON_REPEAT_ALL
+                    else -> CommandButton.ICON_REPEAT_OFF
+                },
+                when (repeat) {
+                    Player.REPEAT_MODE_ONE -> "Repeat one"
+                    Player.REPEAT_MODE_ALL -> "Repeat all"
+                    else -> "Repeat"
+                },
+                REPEAT,
+            ),
+            button(CommandButton.ICON_RADIO, "Instant Mix", RADIO),
+        )
+    }
+
+    private fun refreshButtons() {
+        session?.setMediaButtonPreferences(buttons())
+    }
+
+    /** Records a song's favourite state here, so the car's heart and the app agree. */
+    private fun markStarred(songId: String, starred: Boolean) {
+        starredNow[songId] = starred
+        val index = player.currentMediaItemIndex
+        val item = player.currentMediaItem
+        if (item != null && item.toSong()?.id == songId) {
+            // The song's own details too, so the app shows the same.
+            val extras = Bundle(item.mediaMetadata.extras ?: Bundle()).apply { putBoolean(Extras.STARRED, starred) }
+            player.replaceMediaItem(index, item.buildUpon().setMediaMetadata(item.mediaMetadata.buildUpon().setExtras(extras).build()).build())
+        }
+        refreshButtons()
+    }
+
+    private fun toggleFavourite() {
+        val song = player.currentMediaItem?.toSong() ?: return
+        val now = !currentStarred()
+        markStarred(song.id, now)
+        scope.launch {
+            try {
+                val api = requireApi()
+                if (now) api.star(song.id, SubsonicClient.StarKind.SONG) else api.unstar(song.id, SubsonicClient.StarKind.SONG)
+                if (now && app.settings.value.autoDownloadFavourites) runCatching { app.syncAutoDownloads() }
+            } catch (e: Exception) {
+                // Didn't reach the server: put the button back.
+                markStarred(song.id, !now)
+            }
+        }
+    }
+
+    /** Radio: this song, then songs that sound like it (needs AudioMuse-AI behind Navidrome). */
+    private fun startRadio() {
+        val seed = player.currentMediaItem?.toSong() ?: return
+        scope.launch {
+            val items = runCatching { mix(seed, app.settings.value.mixSize) }.getOrDefault(emptyList())
+            if (items.size < 2) return@launch // Nothing similar came back; keep what's playing.
+            player.setMediaItems(items, 0, C.TIME_UNSET)
+            player.prepare()
+            player.play()
+        }
     }
 
     // --- resolving what to play -------------------------------------------------------------
@@ -280,6 +385,42 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
+        /** Every controller (Android Auto, the notification, the app) may use the extra buttons. */
+        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                .add(FAVOURITE)
+                .add(SHUFFLE)
+                .add(REPEAT)
+                .add(RADIO)
+                .add(SessionCommand(ACTION_SET_STARRED, Bundle.EMPTY))
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(commands)
+                .setMediaButtonPreferences(buttons())
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            when (customCommand.customAction) {
+                FAVOURITE.customAction -> toggleFavourite()
+                SHUFFLE.customAction -> player.shuffleModeEnabled = !player.shuffleModeEnabled
+                REPEAT.customAction -> player.repeatMode = when (player.repeatMode) {
+                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                    else -> Player.REPEAT_MODE_OFF
+                }
+                RADIO.customAction -> startRadio()
+                ACTION_SET_STARRED -> args.getString("id")?.let { markStarred(it, args.getBoolean("starred")) }
+                else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+            }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
@@ -363,5 +504,14 @@ class PlaybackService : MediaLibraryService() {
                 saved.positionMs,
             )
         }
+    }
+
+    companion object {
+        /** Sent by the app when a song is (un)favourited there. Args: "id", "starred". */
+        const val ACTION_SET_STARRED = "app.navimuse.SET_STARRED"
+        private val FAVOURITE = SessionCommand("app.navimuse.FAVOURITE", Bundle.EMPTY)
+        private val SHUFFLE = SessionCommand("app.navimuse.SHUFFLE", Bundle.EMPTY)
+        private val REPEAT = SessionCommand("app.navimuse.REPEAT", Bundle.EMPTY)
+        private val RADIO = SessionCommand("app.navimuse.RADIO", Bundle.EMPTY)
     }
 }

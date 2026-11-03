@@ -221,6 +221,16 @@ def now_playing():
     back()  # closes the playing screen
 
 
+def auto_buttons():
+    # What Android Auto (and the phone's media controls) get: favourite, shuffle, repeat, radio.
+    out = adb("shell", "dumpsys", "media_session")
+    with open(f"{OUT}/media-session.txt", "w") as f:
+        f.write(out)
+    for name in ("favourites", "Shuffle", "Repeat all", "Instant Mix"):
+        assert name in out, f"{name!r} isn't among the media session's buttons"
+    assert re.search(r"queueTitle=[^\n]*size=[1-9]", out), "the queue isn't shared with Android Auto"
+
+
 def save_queue():
     # Save what's playing (the Road trip playlist) from the queue, as you would an Instant Mix.
     road_trip = next(p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Road trip")
@@ -539,6 +549,7 @@ for name, fn in [
     ("keep a copy of an _automatic playlist", keep_copy),
     ("play a song + now-playing report", play),
     ("now playing screen and queue", now_playing),
+    ("Android Auto buttons: favourite, shuffle, repeat, radio", auto_buttons),
     ("save the queue as a playlist", save_queue),
     ("swipe a song right to add it to the queue", swipe_to_queue),
     ("Mixes tab", audiomuse_tab),

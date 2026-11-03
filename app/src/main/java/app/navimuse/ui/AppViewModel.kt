@@ -454,6 +454,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setStar(id: String, kind: SubsonicClient.StarKind, starred: Boolean) {
         _stars.update { it + (id to starred) }
+        if (kind == SubsonicClient.StarKind.SONG) player.markStarred(id, starred)
         action {
             try {
                 if (starred) api().star(id, kind) else api().unstar(id, kind)
