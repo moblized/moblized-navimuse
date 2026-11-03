@@ -64,7 +64,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.navimuse.data.Settings
 import app.navimuse.data.TabChoice
 import app.navimuse.data.TabLabels
-import app.navimuse.ui.screens.CustomizeScreen
 import app.navimuse.net.AlbumListType
 import app.navimuse.net.Song
 import app.navimuse.ui.components.AddToPlaylistDialog
@@ -114,7 +113,6 @@ sealed interface Route {
     data object Downloads : Route
     data object SettingsPage : Route
     data object Safety : Route
-    data object Customize : Route
 }
 
 /** The bottom tab for a choice made in Customize. */
@@ -263,7 +261,6 @@ fun AppRoot(vm: AppViewModel) {
                                 Route.Downloads -> DownloadsScreen(vm, onBack)
                                 Route.SettingsPage -> SettingsScreen(vm, onBack)
                                 Route.Safety -> SafetyScreen(vm, onBack)
-                                Route.Customize -> CustomizeScreen(vm, onBack)
                             }
                         }
                     }

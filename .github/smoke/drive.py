@@ -318,6 +318,7 @@ def settings_and_dark():
     shot("16-safety")
     back()
     time.sleep(1)
+    settings_tab("Look")
     tap_node(scroll_to("Dark"))
     shot("17b-settings-dark")
     time.sleep(2)
@@ -340,6 +341,7 @@ def downloads():
     time.sleep(2)
     tap(text="Home")
     tap(desc="Settings")
+    settings_tab("Downloads")
     tap_node(scroll_to("Download on Wi-Fi only"))
     back()
     tap(text="Collection")
@@ -355,13 +357,28 @@ def downloads():
     shot("21-downloads")
 
 
+def settings_tab(name):
+    """Opens one of the tabs across the top of Settings; the row scrolls sideways for the later ones."""
+    n = find(text=name)
+    if n is None:
+        anchor = find(text="General") or find(text="Playback") or find(text="Look")
+        _, y1, _, y2 = map(int, re.findall(r"\d+", anchor.get("bounds")))
+        y = str((y1 + y2) // 2)
+        adb("shell", "input", "swipe", "950", y, "150", y, "300")
+        time.sleep(1)
+        n = wait_for(text=name)
+    tap_node(n)
+    time.sleep(1)
+
+
 def open_customize():
+    """Settings → Look (colours, themes, styles)."""
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
     time.sleep(2)
     # Collection's gear: Home may be scrolled down (an app style's sections), hiding its own.
     tap(text="Collection")
     tap(desc="Settings")
-    tap_node(scroll_to("Customize"))
+    settings_tab("Look")
     wait_for(text="Accent colour")
 
 
@@ -369,10 +386,13 @@ def customize():
     open_customize()
     shot("22a-customize")
     tap(desc="Pink")
-    # Home: switch on Random songs.
-    tap_node(scroll_to("Random songs", swipes=20))
-    # Playing screen: a spinning record and a round play button (Share is off by default).
-    tap_node(scroll_to("Album art", swipes=10))
+    # Layout → Home: switch on Random songs.
+    settings_tab("Layout")
+    shot("22a2-layout-tab")
+    tap_node(scroll_to("Random songs", swipes=12))
+    # Player: a spinning record and a round play button (Share is off by default).
+    settings_tab("Player")
+    tap_node(scroll_to("Album art", swipes=6))
     tap(text="Spinning record")
     tap_node(scroll_to("Circle", swipes=6))
     tap_node(scroll_to("Open the playing screen", swipes=10))
@@ -386,7 +406,6 @@ def customize():
     tap_node(scroll_to("Floating", swipes=6))
     time.sleep(1)
     shot("22c-customize-mini")
-    back()  # Settings
     back()  # Collection
     tap(text="Home")
     scroll_to("Random songs", swipes=10)
@@ -429,7 +448,6 @@ def symfonium_theme():
         time.sleep(2)
         shot("23-theme-imported")
         back()
-        back()
         tap(text="Home")
         time.sleep(2)
         shot("24-home-night-drive")
@@ -470,7 +488,7 @@ APP_STYLE = {
 
 
 def import_link(url):
-    """Imports a style from a link in Settings → Customize, then goes back to Home."""
+    """Imports a style from a link in Settings → Look, then goes back to Home."""
     open_customize()
     tap_node(scroll_to("Import link", swipes=12))
     wait_for(text="Import from a link")
@@ -478,7 +496,6 @@ def import_link(url):
     type_text(url)
     tap(text="Import")
     time.sleep(3)
-    back()
     back()
     tap(text="Home")
 

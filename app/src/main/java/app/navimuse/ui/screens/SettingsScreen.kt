@@ -18,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -41,6 +40,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -66,135 +69,65 @@ import app.navimuse.ui.components.rememberSoundEffects
 import app.navimuse.update.Updater
 import kotlinx.coroutines.launch
 
+/** The tabs across the top of Settings. */
+private enum class SettingsTab(val label: String) {
+    GENERAL("General"),
+    PLAYBACK("Playback"),
+    DOWNLOADS("Downloads"),
+    LOOK("Look"),
+    LAYOUT("Layout"),
+    PLAYER("Player"),
+}
+
 @Composable
 fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
-    val ui = LocalUi.current
-    val settings by vm.settings.collectAsState()
-    val login by vm.login.collectAsState()
-    val info by vm.serverInfo.collectAsState()
     var confirmLogout by remember { mutableStateOf(false) }
     var confirmRemoveDownloads by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
+    val tabs = SettingsTab.entries
+    val pager = rememberPagerState { tabs.size }
+    val scope = rememberCoroutineScope()
+    val scheme = MaterialTheme.colorScheme
+    val onLookTab = tabs[pager.currentPage] in setOf(SettingsTab.LOOK, SettingsTab.LAYOUT, SettingsTab.PLAYER)
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Settings") },
             navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            actions = { if (onLookTab) TextButton(onClick = { confirmReset = true }) { Text("Reset look") } },
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
-            Group("Navidrome")
-            ListItem(
-                headlineContent = { Text(login?.username ?: "") },
-                supportingContent = {
-                    Text(
-                        listOfNotNull(
-                            login?.baseUrl,
-                            info?.serverVersion?.let { "${info?.serverType ?: "Server"} $it" },
-                        ).joinToString("\n"),
-                    )
-                },
-                trailingContent = {
-                    IconButton(onClick = { confirmLogout = true }) { Icon(Icons.AutoMirrored.Filled.Logout, "Log out") }
-                },
-            )
-            ListItem(
-                headlineContent = { Text("Safety") },
-                supportingContent = { Text("What this app will never do, and how to keep AudioMuse-AI from touching your files") },
-                leadingContent = { Icon(Icons.Filled.Shield, null, tint = MaterialTheme.colorScheme.secondary) },
-                trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
-                modifier = Modifier.clickable { ui.navigate(Route.Safety) },
-            )
-
-            HorizontalDivider()
-            Group("Appearance")
-            ThemeModePicker(settings.theme) { mode -> vm.updateSettings { it.copy(theme = mode) } }
-            ListItem(
-                headlineContent = { Text("Customize") },
-                supportingContent = { Text("Colours, fonts, icons, Home, Collection, tabs, the playing screen and mini player") },
-                leadingContent = { Icon(Icons.Filled.Tune, null, tint = MaterialTheme.colorScheme.secondary) },
-                trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
-                modifier = Modifier.clickable { ui.navigate(Route.Customize) },
-            )
-
-            HorizontalDivider()
-            Group("AudioMuse-AI (optional)")
-            AudioMuseSettings(vm)
-
-            HorizontalDivider()
-            Group("Playback")
-            QualityPicker("Streaming on Wi-Fi", settings.wifiQuality) { q -> vm.updateSettings { it.copy(wifiQuality = q) } }
-            QualityPicker("Streaming on mobile data", settings.mobileQuality) { q -> vm.updateSettings { it.copy(mobileQuality = q) } }
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text("Instant Mix length: ${settings.mixSize} songs", style = MaterialTheme.typography.bodyLarge)
-                Slider(
-                    value = settings.mixSize.toFloat(),
-                    onValueChange = { v -> vm.updateSettings { it.copy(mixSize = (v / 10).toInt() * 10) } },
-                    valueRange = 20f..100f,
-                    steps = 7,
+        PrimaryScrollableTabRow(
+            selectedTabIndex = pager.currentPage,
+            edgePadding = 8.dp,
+            containerColor = scheme.background,
+            contentColor = scheme.onBackground,
+        ) {
+            tabs.forEachIndexed { i, t ->
+                Tab(
+                    selected = pager.currentPage == i,
+                    onClick = { scope.launch { pager.animateScrollToPage(i) } },
+                    text = { Text(t.label, style = MaterialTheme.typography.titleSmall) },
+                    selectedContentColor = scheme.onBackground,
+                    unselectedContentColor = scheme.onSurfaceVariant,
                 )
             }
-            SwitchRow(
-                "Play Dolby Atmos in its original format",
-                "Atmos and surround songs stream and download untouched, even on mobile data, so your phone's Dolby decoder plays them. " +
-                    "Turn off if they won't play, and the server converts them to stereo.",
-                settings.dolbyOriginal,
-            ) { on -> vm.updateSettings { it.copy(dolbyOriginal = on) } }
-            DetailsStylePicker(settings.detailsStyle) { d -> vm.updateSettings { it.copy(detailsStyle = d) } }
-            rememberSoundEffects()?.let { open ->
-                ListItem(
-                    headlineContent = { Text("Sound effects") },
-                    supportingContent = { Text("Your phone's equalizer and effects, such as Dolby Atmos on Samsung phones") },
-                    trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
-                    modifier = Modifier.clickable { open() },
-                )
+        }
+        // Swipe sideways between tabs, or tap one.
+        HorizontalPager(pager, Modifier.fillMaxSize(), key = { tabs[it].name }) { page ->
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
+                when (tabs[page]) {
+                    SettingsTab.GENERAL -> GeneralSettings(vm, onLogOut = { confirmLogout = true })
+                    SettingsTab.PLAYBACK -> PlaybackSettings(vm)
+                    SettingsTab.DOWNLOADS -> DownloadSettings(vm, onRemoveAll = { confirmRemoveDownloads = true })
+                    SettingsTab.LOOK -> LookSettings(vm)
+                    SettingsTab.LAYOUT -> LayoutSettings(vm)
+                    SettingsTab.PLAYER -> PlayerSettings(vm)
+                }
             }
-            SwitchRow(
-                "Report plays to Navidrome",
-                "Keeps play counts and \"recently played\" up to date. AudioMuse-AI uses these for taste-based mixes.",
-                settings.scrobble,
-            ) { on -> vm.updateSettings { it.copy(scrobble = on) } }
-
-            HorizontalDivider()
-            Group("Downloads")
-            QualityPicker("Download quality", settings.downloadQuality) { q -> vm.updateSettings { it.copy(downloadQuality = q) } }
-            SwitchRow("Download on Wi-Fi only", "Downloads wait until you're on Wi-Fi.", settings.downloadWifiOnly) { on ->
-                vm.updateSettings { it.copy(downloadWifiOnly = on) }
-            }
-            SwitchRow(
-                "Download favourites automatically",
-                "Every favourite song is saved on the phone, and new ones as you add them.",
-                settings.autoDownloadFavourites,
-            ) { on -> vm.setFavouritesAutoDownload(on) }
-            val downloads by vm.downloads.collectAsState()
-            val bytes = remember(downloads.size) { vm.downloadBytes() }
-            ListItem(
-                headlineContent = { Text("Downloaded songs") },
-                supportingContent = { Text("${downloads.size} on this phone, ${"%.1f".format(bytes / 1_073_741_824.0)} GB") },
-                trailingContent = {
-                    if (downloads.isNotEmpty()) TextButton(onClick = { confirmRemoveDownloads = true }) { Text("Remove all") }
-                },
-            )
-
-            HorizontalDivider()
-            Group("Updates")
-            SwitchRow(
-                "Update automatically",
-                "Checks GitHub twice a day and downloads new versions. You tap once to install.",
-                settings.autoUpdate,
-            ) { on ->
-                vm.updateSettings { it.copy(autoUpdate = on) }
-                if (on) ui.askNotifications()
-            }
-            UpdateRow(vm)
-
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Text(
-                "NaviMuse ${BuildConfig.VERSION_NAME}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(16.dp),
-            )
         }
     }
+
+    if (confirmReset) ResetLookDialog(vm) { confirmReset = false }
 
     if (confirmRemoveDownloads) {
         AlertDialog(
@@ -225,6 +158,123 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Cancel") } },
         )
     }
+}
+
+/** General: your Navidrome account, safety, AudioMuse-AI, updates and the app's version. */
+@Composable
+private fun GeneralSettings(vm: AppViewModel, onLogOut: () -> Unit) {
+    val ui = LocalUi.current
+    val settings by vm.settings.collectAsState()
+    val login by vm.login.collectAsState()
+    val info by vm.serverInfo.collectAsState()
+    Group("Navidrome")
+    ListItem(
+        headlineContent = { Text(login?.username ?: "") },
+        supportingContent = {
+            Text(
+                listOfNotNull(
+                    login?.baseUrl,
+                    info?.serverVersion?.let { "${info?.serverType ?: "Server"} $it" },
+                ).joinToString("\n"),
+            )
+        },
+        trailingContent = { IconButton(onClick = onLogOut) { Icon(Icons.AutoMirrored.Filled.Logout, "Log out") } },
+    )
+    ListItem(
+        headlineContent = { Text("Safety") },
+        supportingContent = { Text("What this app will never do, and how to keep AudioMuse-AI from touching your files") },
+        leadingContent = { Icon(Icons.Filled.Shield, null, tint = MaterialTheme.colorScheme.secondary) },
+        trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
+        modifier = Modifier.clickable { ui.navigate(Route.Safety) },
+    )
+
+    HorizontalDivider()
+    Group("AudioMuse-AI (optional)")
+    AudioMuseSettings(vm)
+
+    HorizontalDivider()
+    Group("Updates")
+    SwitchRow(
+        "Update automatically",
+        "Checks GitHub twice a day and downloads new versions. You tap once to install.",
+        settings.autoUpdate,
+    ) { on ->
+        vm.updateSettings { it.copy(autoUpdate = on) }
+        if (on) ui.askNotifications()
+    }
+    UpdateRow(vm)
+    Text(
+        "NaviMuse ${BuildConfig.VERSION_NAME}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(16.dp),
+    )
+}
+
+/** Playback: streaming quality, Instant Mix length, Dolby, sound effects, play reports. */
+@Composable
+private fun PlaybackSettings(vm: AppViewModel) {
+    val settings by vm.settings.collectAsState()
+    Spacer(Modifier.height(8.dp))
+    QualityPicker("Streaming on Wi-Fi", settings.wifiQuality) { q -> vm.updateSettings { it.copy(wifiQuality = q) } }
+    QualityPicker("Streaming on mobile data", settings.mobileQuality) { q -> vm.updateSettings { it.copy(mobileQuality = q) } }
+    Text(
+        "Original sends your files untouched. The others ask Navidrome to convert them to a smaller size.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text("Instant Mix length: ${settings.mixSize} songs", style = MaterialTheme.typography.bodyLarge)
+        Slider(
+            value = settings.mixSize.toFloat(),
+            onValueChange = { v -> vm.updateSettings { it.copy(mixSize = (v / 10).toInt() * 10) } },
+            valueRange = 20f..100f,
+            steps = 7,
+        )
+    }
+    SwitchRow(
+        "Play Dolby Atmos in its original format",
+        "Atmos and surround songs stream and download untouched, even on mobile data, so your phone's Dolby decoder plays them. " +
+            "Turn off if they won't play, and the server converts them to stereo.",
+        settings.dolbyOriginal,
+    ) { on -> vm.updateSettings { it.copy(dolbyOriginal = on) } }
+    rememberSoundEffects()?.let { open ->
+        ListItem(
+            headlineContent = { Text("Sound effects") },
+            supportingContent = { Text("Your phone's equalizer and effects, such as Dolby Atmos on Samsung phones") },
+            trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
+            modifier = Modifier.clickable { open() },
+        )
+    }
+    SwitchRow(
+        "Report plays to Navidrome",
+        "Keeps play counts and \"recently played\" up to date. AudioMuse-AI uses these for taste-based mixes.",
+        settings.scrobble,
+    ) { on -> vm.updateSettings { it.copy(scrobble = on) } }
+}
+
+/** Downloads: quality, Wi-Fi only, favourites, and what's on the phone. */
+@Composable
+private fun DownloadSettings(vm: AppViewModel, onRemoveAll: () -> Unit) {
+    val settings by vm.settings.collectAsState()
+    val downloads by vm.downloads.collectAsState()
+    val bytes = remember(downloads.size) { vm.downloadBytes() }
+    Spacer(Modifier.height(8.dp))
+    QualityPicker("Download quality", settings.downloadQuality) { q -> vm.updateSettings { it.copy(downloadQuality = q) } }
+    SwitchRow("Download on Wi-Fi only", "Downloads wait until you're on Wi-Fi.", settings.downloadWifiOnly) { on ->
+        vm.updateSettings { it.copy(downloadWifiOnly = on) }
+    }
+    SwitchRow(
+        "Download favourites automatically",
+        "Every favourite song is saved on the phone, and new ones as you add them.",
+        settings.autoDownloadFavourites,
+    ) { on -> vm.setFavouritesAutoDownload(on) }
+    ListItem(
+        headlineContent = { Text("Downloaded songs") },
+        supportingContent = { Text("${downloads.size} on this phone, ${"%.1f".format(bytes / 1_073_741_824.0)} GB") },
+        trailingContent = { if (downloads.isNotEmpty()) TextButton(onClick = onRemoveAll) { Text("Remove all") } },
+    )
 }
 
 @Composable

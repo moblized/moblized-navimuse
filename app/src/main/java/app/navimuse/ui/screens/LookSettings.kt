@@ -89,189 +89,181 @@ import app.navimuse.ui.theme.ArtShape
 import app.navimuse.ui.theme.Sans
 import app.navimuse.ui.theme.isDark
 
-/**
- * Settings → Customize: how the app looks and how it's laid out. Every change shows at once;
- * Reset brings back NaviMuse's own look.
+/*
+ * The Look, Layout and Player tabs of Settings: how the app looks and how it's laid out.
+ * Every change shows at once; "Reset look" in the top bar brings back NaviMuse's own.
  */
+
+/** Look: light/dark, colours, colour themes and styles, icons, text, shapes and sizes. */
 @Composable
-fun CustomizeScreen(vm: AppViewModel, onBack: () -> Unit) {
-    val ui = LocalUi.current
+internal fun LookSettings(vm: AppViewModel) {
     val settings by vm.settings.collectAsState()
     val appStyle by vm.appStyle.collectAsState()
+    val look = settings.look
+    fun change(f: (Look) -> Look) = vm.updateLook(f)
+
+    LookPreview()
+    Group("Colours")
+    ThemeModePicker(settings.theme) { mode -> vm.updateSettings { it.copy(theme = mode) } }
+    AccentPicker(look.accent) { a -> change { it.copy(accent = a) } }
+    Segments(
+        "Dark background",
+        DarkShade.entries,
+        look.darkShade,
+        { it.label },
+        note = "Black saves battery on OLED screens. Used with NaviMuse's colours in dark mode.",
+    ) { v -> change { it.copy(darkShade = v) } }
+    ThemeSettings(vm)
+    IconPackSettings(vm)
+
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Group("Text")
+    Choice("Font", FontChoice.entries, look.font, { it.label }, fontOf = { fontFamilyOf(it) }) { v -> change { it.copy(font = v) } }
+    if (look.font == FontChoice.INSTRUMENT) {
+        Segments("Page titles and names", TitleFont.entries, look.titleFont, { it.label }) { v -> change { it.copy(titleFont = v) } }
+    }
+    Segments("Text size", TextSize.entries, look.textSize, { it.label }) { v -> change { it.copy(textSize = v) } }
+
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Group("Shapes and sizes")
+    Segments("Album art corners", Corners.entries, look.corners, { it.label }) { v -> change { it.copy(corners = v) } }
+    Segments("Cards on Home", CardSize.entries, look.cardSize, { it.label }) { v -> change { it.copy(cardSize = v) } }
+    Segments(
+        "Album grid columns",
+        listOf(0, 2, 3, 4),
+        look.gridColumns,
+        { if (it == 0) "Auto" else it.toString() },
+        note = if (appStyle?.gridColumns != null) "Your Symfonium app style sets this for now." else null,
+    ) { v -> change { it.copy(gridColumns = v) } }
+}
+
+/** Layout: the bottom tabs, Home, Collection and song lists. */
+@Composable
+internal fun LayoutSettings(vm: AppViewModel) {
+    val settings by vm.settings.collectAsState()
+    val appStyle by vm.appStyle.collectAsState()
+    val look = settings.look
+    fun change(f: (Look) -> Look) = vm.updateLook(f)
+
+    Group("Bottom tabs")
+    Hint("Turn tabs on or off and use the arrows to change their order. Home or Collection always stays, because Settings opens from there.")
+    OrderList(
+        all = TabChoice.entries,
+        shown = look.tabs,
+        label = { it.label },
+        locked = { t ->
+            // The last of Home and Collection can't go.
+            (t == TabChoice.HOME && TabChoice.COLLECTION !in look.tabs) ||
+                (t == TabChoice.COLLECTION && TabChoice.HOME !in look.tabs)
+        },
+    ) { v -> change { it.copy(tabs = v) } }
+    Segments("Tab names", TabLabels.entries, look.tabLabels, { it.label }) { v -> change { it.copy(tabLabels = v) } }
+    Choice("Open the app on", look.tabs, look.startTab, { it.label }) { v -> change { it.copy(startTab = v) } }
+
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Group("Home")
+    val styleHome = appStyle?.takeIf { it.homeRows.isNotEmpty() }
+    if (styleHome != null) {
+        StyleNote("Home is arranged by your Symfonium app style \"${styleHome.name}\" right now.", "Use these instead") { vm.removeAppStyle() }
+    }
+    Hint("Pick what Home shows, and in what order.")
+    OrderList(HomeSection.entries, look.home, { it.label }) { v -> change { it.copy(home = v) } }
+
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Group("Collection")
+    if (appStyle?.library.orEmpty().isNotEmpty()) {
+        StyleNote("Your Symfonium app style sets the Collection menu right now.", "Use these instead") { vm.removeAppStyle() }
+    }
+    OrderList(CollectionEntry.entries, look.collection, { it.label }) { v -> change { it.copy(collection = v) } }
+    SwitchRow("Recently played", "Albums you played lately, under the menu.", look.collectionRecent) { on ->
+        change { it.copy(collectionRecent = on) }
+    }
+
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Group("Song lists")
+    SwitchRow(
+        "Swipe a song right to add it to the queue",
+        "Works in albums, playlists, search, favourites and downloads.",
+        look.swipeToQueue,
+    ) { on -> change { it.copy(swipeToQueue = on) } }
+}
+
+/** Player: the playing screen and the mini player. */
+@Composable
+internal fun PlayerSettings(vm: AppViewModel) {
+    val ui = LocalUi.current
+    val settings by vm.settings.collectAsState()
     val nowPlayingStyle by vm.nowPlayingStyle.collectAsState()
     val player by vm.playerState.collectAsState()
     val look = settings.look
-    var confirmReset by remember { mutableStateOf(false) }
     fun change(f: (Look) -> Look) = vm.updateLook(f)
 
-    Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text("Customize") },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-            actions = { TextButton(onClick = { confirmReset = true }) { Text("Reset") } },
-        )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
-            LookPreview()
-
-            // --- colours ------------------------------------------------------------------------
-            Group("Colours")
-            ThemeModePicker(settings.theme) { mode -> vm.updateSettings { it.copy(theme = mode) } }
-            AccentPicker(look.accent) { a -> change { it.copy(accent = a) } }
-            Segments(
-                "Dark background",
-                DarkShade.entries,
-                look.darkShade,
-                { it.label },
-                note = "Black saves battery on OLED screens. Used with NaviMuse's colours in dark mode.",
-            ) { v -> change { it.copy(darkShade = v) } }
-            ThemeSettings(vm)
-            IconPackSettings(vm)
-
-            // --- text ---------------------------------------------------------------------------
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Group("Text")
-            Choice(
-                "Font",
-                FontChoice.entries,
-                look.font,
-                { it.label },
-                fontOf = { fontFamilyOf(it) },
-            ) { v -> change { it.copy(font = v) } }
-            if (look.font == FontChoice.INSTRUMENT) {
-                Segments("Page titles and names", TitleFont.entries, look.titleFont, { it.label }) { v -> change { it.copy(titleFont = v) } }
-            }
-            Segments("Text size", TextSize.entries, look.textSize, { it.label }) { v -> change { it.copy(textSize = v) } }
-
-            // --- shapes and sizes ---------------------------------------------------------------
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Group("Shapes and sizes")
-            Segments("Album art corners", Corners.entries, look.corners, { it.label }) { v -> change { it.copy(corners = v) } }
-            Segments("Cards on Home", CardSize.entries, look.cardSize, { it.label }) { v -> change { it.copy(cardSize = v) } }
-            Segments(
-                "Album grid columns",
-                listOf(0, 2, 3, 4),
-                look.gridColumns,
-                { if (it == 0) "Auto" else it.toString() },
-                note = if (appStyle?.gridColumns != null) "Your Symfonium app style sets this for now." else null,
-            ) { v -> change { it.copy(gridColumns = v) } }
-
-            // --- bottom tabs --------------------------------------------------------------------
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Group("Bottom tabs")
-            Hint("Turn tabs on or off and use the arrows to change their order. Home or Collection always stays, because Settings opens from there.")
-            OrderList(
-                all = TabChoice.entries,
-                shown = look.tabs,
-                label = { it.label },
-                locked = { t ->
-                    // The last of Home and Collection can't go.
-                    (t == TabChoice.HOME && TabChoice.COLLECTION !in look.tabs) ||
-                        (t == TabChoice.COLLECTION && TabChoice.HOME !in look.tabs)
-                },
-            ) { v -> change { it.copy(tabs = v) } }
-            Segments("Tab names", TabLabels.entries, look.tabLabels, { it.label }) { v -> change { it.copy(tabLabels = v) } }
-            Choice("Open the app on", look.tabs, look.startTab, { it.label }) { v -> change { it.copy(startTab = v) } }
-
-            // --- home ---------------------------------------------------------------------------
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Group("Home")
-            val styleHome = appStyle?.takeIf { it.homeRows.isNotEmpty() }
-            if (styleHome != null) {
-                StyleNote("Home is arranged by your Symfonium app style \"${styleHome.name}\" right now.", "Use these instead") { vm.removeAppStyle() }
-            }
-            Hint("Pick what Home shows, and in what order.")
-            OrderList(HomeSection.entries, look.home, { it.label }) { v -> change { it.copy(home = v) } }
-
-            // --- collection ---------------------------------------------------------------------
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Group("Collection")
-            if (appStyle?.library.orEmpty().isNotEmpty()) {
-                StyleNote("Your Symfonium app style sets the Collection menu right now.", "Use these instead") { vm.removeAppStyle() }
-            }
-            OrderList(CollectionEntry.entries, look.collection, { it.label }) { v -> change { it.copy(collection = v) } }
-            SwitchRow("Recently played", "Albums you played lately, under the menu.", look.collectionRecent) { on ->
-                change { it.copy(collectionRecent = on) }
-            }
-
-            // --- song lists ---------------------------------------------------------------------
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Group("Song lists")
-            SwitchRow(
-                "Swipe a song right to add it to the queue",
-                "Works in albums, playlists, search, favourites and downloads.",
-                look.swipeToQueue,
-            ) { on -> change { it.copy(swipeToQueue = on) } }
-
-            // --- playing screen -----------------------------------------------------------------
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Group("Playing screen")
-            nowPlayingStyle?.let { st ->
-                StyleNote("Your Symfonium now-playing style \"${st.name}\" sets some of these, and wins where it does.", null) {}
-            }
-            Segments("Background", PlayerBackground.entries, look.playerBackground, { it.label }) { v -> change { it.copy(playerBackground = v) } }
-            Choice("Album art", PlayerArt.entries, look.playerArt, { it.label }) { v -> change { it.copy(playerArt = v) } }
-            Segments("Album art size", ArtSize.entries, look.artSize, { it.label }) { v -> change { it.copy(artSize = v) } }
-            Segments("Song name", TitleAlign.entries, look.titleAlign, { it.label }) { v -> change { it.copy(titleAlign = v) } }
-            Segments("Play button", PlayButtonStyle.entries, look.playButton, { it.label }) { v -> change { it.copy(playButton = v) } }
-            Segments("Seek bar", SeekBarStyle.entries, look.seekBar, { it.label }) { v -> change { it.copy(seekBar = v) } }
-            DetailsStylePicker(settings.detailsStyle) { d -> vm.updateSettings { it.copy(detailsStyle = d) } }
-            SwitchRow("Times under the seek bar", null, look.showTimes) { on -> change { it.copy(showTimes = on) } }
-            SwitchRow("Shuffle and repeat buttons", null, look.showShuffleRepeat) { on -> change { it.copy(showShuffleRepeat = on) } }
-            SwitchRow("Artist photo", "Top left; tap it for the artist. Off shows a close button instead.", look.showArtistPhoto) { on ->
-                change { it.copy(showArtistPhoto = on) }
-            }
-            SwitchRow("Speaker button", "Pick Bluetooth, the phone's speaker or another device.", look.showOutputButton) { on ->
-                change { it.copy(showOutputButton = on) }
-            }
-            SwitchRow("\"Playing from\"", "Where the queue came from; tap it to go there.", look.showPlayingFrom) { on ->
-                change { it.copy(showPlayingFrom = on) }
-            }
-            SwitchRow("Share button", null, look.showShare) { on -> change { it.copy(showShare = on) } }
-            SwitchRow("Swipe the art to change songs", null, look.swipeArt) { on -> change { it.copy(swipeArt = on) } }
-            SwitchRow("Keep the screen on", "While the playing screen is open.", look.keepScreenOn) { on -> change { it.copy(keepScreenOn = on) } }
-            if (player.current != null) {
-                OutlinedButton(onClick = { ui.openPlayer() }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Open the playing screen")
-                }
-            } else {
-                Hint("Play something to see your changes on the playing screen.")
-            }
-
-            // --- mini player --------------------------------------------------------------------
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            Group("Mini player")
-            Segments("Style", MiniStyle.entries, look.miniStyle, { it.label }) { v -> change { it.copy(miniStyle = v) } }
-            SwitchRow("Progress line", null, look.miniProgress) { on -> change { it.copy(miniProgress = on) } }
-            SwitchRow("Previous button", null, look.miniPrevious) { on -> change { it.copy(miniPrevious = on) } }
-            SwitchRow("Next button", null, look.miniNext) { on -> change { it.copy(miniNext = on) } }
-            SwitchRow("Swipe to change songs", null, look.miniSwipe) { on -> change { it.copy(miniSwipe = on) } }
-
-            HorizontalDivider(Modifier.padding(top = 8.dp))
-            OutlinedButton(onClick = { confirmReset = true }, modifier = Modifier.padding(16.dp)) { Text("Reset to NaviMuse's look") }
+    Group("Playing screen")
+    nowPlayingStyle?.let { st ->
+        StyleNote("Your Symfonium now-playing style \"${st.name}\" sets some of these, and wins where it does.", null) {}
+    }
+    Segments("Background", PlayerBackground.entries, look.playerBackground, { it.label }) { v -> change { it.copy(playerBackground = v) } }
+    Choice("Album art", PlayerArt.entries, look.playerArt, { it.label }) { v -> change { it.copy(playerArt = v) } }
+    Segments("Album art size", ArtSize.entries, look.artSize, { it.label }) { v -> change { it.copy(artSize = v) } }
+    Segments("Song name", TitleAlign.entries, look.titleAlign, { it.label }) { v -> change { it.copy(titleAlign = v) } }
+    Segments("Play button", PlayButtonStyle.entries, look.playButton, { it.label }) { v -> change { it.copy(playButton = v) } }
+    Segments("Seek bar", SeekBarStyle.entries, look.seekBar, { it.label }) { v -> change { it.copy(seekBar = v) } }
+    DetailsStylePicker(settings.detailsStyle) { d -> vm.updateSettings { it.copy(detailsStyle = d) } }
+    SwitchRow("Times under the seek bar", null, look.showTimes) { on -> change { it.copy(showTimes = on) } }
+    SwitchRow("Shuffle and repeat buttons", null, look.showShuffleRepeat) { on -> change { it.copy(showShuffleRepeat = on) } }
+    SwitchRow("Artist photo", "Top left; tap it for the artist. Off shows a close button instead.", look.showArtistPhoto) { on ->
+        change { it.copy(showArtistPhoto = on) }
+    }
+    SwitchRow("Speaker button", "Pick Bluetooth, the phone's speaker or another device.", look.showOutputButton) { on ->
+        change { it.copy(showOutputButton = on) }
+    }
+    SwitchRow("\"Playing from\"", "Where the queue came from; tap it to go there.", look.showPlayingFrom) { on ->
+        change { it.copy(showPlayingFrom = on) }
+    }
+    SwitchRow("Share button", null, look.showShare) { on -> change { it.copy(showShare = on) } }
+    SwitchRow("Swipe the art to change songs", "Tap the art for lyrics; swipe up from the bottom for the queue.", look.swipeArt) { on ->
+        change { it.copy(swipeArt = on) }
+    }
+    SwitchRow("Keep the screen on", "While the playing screen is open.", look.keepScreenOn) { on -> change { it.copy(keepScreenOn = on) } }
+    if (player.current != null) {
+        OutlinedButton(onClick = { ui.openPlayer() }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Open the playing screen")
         }
+    } else {
+        Hint("Play something to see your changes on the playing screen.")
     }
 
-    if (confirmReset) {
-        AlertDialog(
-            onDismissRequest = { confirmReset = false },
-            title = { Text("Reset to NaviMuse's look?") },
-            text = {
-                Text(
-                    "Colours, fonts, icons and layout go back to how NaviMuse comes. " +
-                        "Imported colour themes stay in the list, and Symfonium styles stay until you remove them.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmReset = false
-                    vm.updateSettings { it.copy(look = Look(), themeId = null, iconPack = null, detailsStyle = DetailsStyle.TIDAL) }
-                }) { Text("Reset") }
-            },
-            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
-        )
-    }
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Group("Mini player")
+    Segments("Style", MiniStyle.entries, look.miniStyle, { it.label }) { v -> change { it.copy(miniStyle = v) } }
+    SwitchRow("Progress line", null, look.miniProgress) { on -> change { it.copy(miniProgress = on) } }
+    SwitchRow("Previous button", null, look.miniPrevious) { on -> change { it.copy(miniPrevious = on) } }
+    SwitchRow("Next button", null, look.miniNext) { on -> change { it.copy(miniNext = on) } }
+    SwitchRow("Swipe to change songs", null, look.miniSwipe) { on -> change { it.copy(miniSwipe = on) } }
+}
+
+/** Asks before putting the look and layout back to how NaviMuse comes. */
+@Composable
+internal fun ResetLookDialog(vm: AppViewModel, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Reset to NaviMuse's look?") },
+        text = {
+            Text(
+                "Colours, fonts, icons and layout go back to how NaviMuse comes. " +
+                    "Imported colour themes stay in the list, and Symfonium styles stay until you remove them.",
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                vm.updateSettings { it.copy(look = Look(), themeId = null, iconPack = null, detailsStyle = DetailsStyle.TIDAL) }
+            }) { Text("Reset") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 private fun fontFamilyOf(f: FontChoice): FontFamily = when (f) {
