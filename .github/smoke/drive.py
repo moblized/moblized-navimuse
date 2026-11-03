@@ -59,6 +59,15 @@ def dismiss_system_dialogs(root):
     return False
 
 
+def first(*finds):
+    """The first lookup that found something. (A screen element with no children is falsy, so `or` won't do.)"""
+    for f in finds:
+        n = f()
+        if n is not None:
+            return n
+    return None
+
+
 def find(text=None, desc=None, contains=False, last=False):
     hit = None
     root = dump()
@@ -241,7 +250,7 @@ def open_player():
     end = time.time() + 30
     n = None
     while n is None and time.time() < end:
-        n = find(desc="Pause") or find(desc="Play")
+        n = first(lambda: find(desc="Pause"), lambda: find(desc="Play"))
         if n is None:
             time.sleep(1.5)
     if n is not None:
@@ -420,7 +429,7 @@ def settings_tab(name):
     """Opens one of the tabs across the top of Settings; the row scrolls sideways for the later ones."""
     n = find(text=name)
     if n is None:
-        anchor = find(text="General") or find(text="Playback") or find(text="Look")
+        anchor = first(lambda: find(text="General"), lambda: find(text="Playback"), lambda: find(text="Look"))
         _, y1, _, y2 = map(int, re.findall(r"\d+", anchor.get("bounds")))
         y = str((y1 + y2) // 2)
         adb("shell", "input", "swipe", "950", y, "150", y, "300")
