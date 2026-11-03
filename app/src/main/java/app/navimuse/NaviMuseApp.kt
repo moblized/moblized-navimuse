@@ -72,6 +72,7 @@ class NaviMuseApp : Application() {
         Dolby.init(this)
         CustomThemes.init(this)
         SymfoniumStyles.init(this)
+        app.navimuse.data.Blocklist.init(this)
         // Loads the list of downloads, so songs saved on the phone play from it straight away.
         Downloads.manager(this)
         UpdateWorker.schedule(this, _settings.value.autoUpdate)

@@ -29,6 +29,7 @@ import android.os.Bundle
 import kotlinx.coroutines.launch
 import app.navimuse.BuildConfig
 import app.navimuse.MainActivity
+import app.navimuse.data.Blocklist
 import app.navimuse.NaviMuseApp
 import app.navimuse.net.AlbumListType
 import app.navimuse.net.Song
@@ -105,6 +106,20 @@ class PlaybackService : MediaLibraryService() {
                 val format = group.getTrackFormat(index)
                 val label = Dolby.fromMime(format.sampleMimeType, format.channelCount) ?: return
                 player.currentMediaItem?.toSong()?.let { Dolby.learn(it, label) }
+            }
+        })
+        // Blocked songs and artists are skipped when they come up next (picking one yourself plays it).
+        player.addListener(object : Player.Listener {
+            private var skipped = 0
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val passing = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK
+                val song = mediaItem?.toSong()
+                if (passing && song != null && Blocklist.isBlocked(song) && player.hasNextMediaItem() && skipped < player.mediaItemCount) {
+                    skipped++
+                    player.seekToNextMediaItem()
+                } else {
+                    skipped = 0
+                }
             }
         })
         // Keep the car's (and notification's) favourite, shuffle and repeat buttons in step.
@@ -319,7 +334,7 @@ class PlaybackService : MediaLibraryService() {
                 val seed = player.currentMediaItem?.toSong() ?: api.randomSongs(1).firstOrNull() ?: return null
                 return mix(seed, mixSize) to 0
             }
-            mediaId == MediaIds.SHUFFLE_ALL -> return api.randomSongs(100).map { it.item() } to 0
+            mediaId == MediaIds.SHUFFLE_ALL -> return Blocklist.allowed(api.randomSongs(100)).map { it.item() } to 0
             mediaId.startsWith(MediaIds.MIX_ALBUM_PREFIX) -> {
                 val songs = api.album(mediaId.removePrefix(MediaIds.MIX_ALBUM_PREFIX)).songs
                 val seed = songs.randomOrNull() ?: return null
@@ -340,7 +355,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun mix(seed: Song, size: Int): List<MediaItem> {
-        val similar = runCatching { requireApi().similarSongs(seed.id, size) }.getOrDefault(emptyList())
+        val similar = Blocklist.allowed(runCatching { requireApi().similarSongs(seed.id, size) }.getOrDefault(emptyList()))
         return (listOf(seed) + similar.filter { it.id != seed.id }).map { it.item() }
     }
 

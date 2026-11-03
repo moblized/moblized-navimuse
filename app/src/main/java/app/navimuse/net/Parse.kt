@@ -136,6 +136,51 @@ object Parse {
 
     fun singleSong(resp: JSONObject): Song? = resp.optJSONObject("song")?.let(::song)
 
+    /**
+     * A song's credits from getSong: the people (OpenSubsonic "contributors": composers,
+     * producers, engineers, performers…) and facts about the song. Anything missing is skipped.
+     */
+    fun credits(resp: JSONObject): List<Credit> {
+        val o = resp.optJSONObject("song") ?: return emptyList()
+        val out = mutableListOf<Credit>()
+        fun add(role: String, value: String?) {
+            if (!value.isNullOrBlank() && out.none { it.role == role }) out += Credit(role, value.trim())
+        }
+        fun names(key: String) = o.arrayOf(key).objects().mapNotNull { it.str("name") }.distinct().joinToString(", ").ifBlank { null }
+        add("Artist", o.str("displayArtist") ?: names("artists") ?: o.str("artist"))
+        add("Album artist", o.str("displayAlbumArtist") ?: names("albumArtists"))
+        add("Composer", o.str("displayComposer"))
+        // Everyone else Navidrome knows about, grouped by what they did.
+        val byRole = LinkedHashMap<String, MutableList<String>>()
+        o.arrayOf("contributors").objects().forEach { c ->
+            val role = c.str("role")?.lowercase() ?: return@forEach
+            if (role == "artist" || role == "albumartist" || role == "maincredit") return@forEach
+            val name = c.optJSONObject("artist")?.str("name") ?: return@forEach
+            val label = roleLabel(role, c.str("subRole"))
+            if (label == "Composer" && out.any { it.role == "Composer" }) return@forEach
+            val list = byRole.getOrPut(label) { mutableListOf() }
+            if (name !in list) list += name
+        }
+        byRole.forEach { (role, list) -> add(role, list.joinToString(", ")) }
+        add("Album", o.str("album"))
+        o.optInt("year").takeIf { it > 0 }?.let { add("Year", it.toString()) }
+        add("Genre", names("genres") ?: o.str("genre"))
+        val track = o.optInt("track")
+        val disc = o.optInt("discNumber")
+        if (track > 0) add("Track", if (disc > 1) "$track (disc $disc)" else track.toString())
+        o.optInt("bpm").takeIf { it > 0 }?.let { add("BPM", it.toString()) }
+        add("Comment", o.str("comment"))
+        return out
+    }
+
+    private fun roleLabel(role: String, subRole: String?): String {
+        val base = when (role) {
+            "djmixer" -> "DJ mixer"
+            else -> role.replaceFirstChar { it.uppercase() }
+        }
+        return if (subRole.isNullOrBlank()) base else "$base ($subRole)"
+    }
+
     /** getSonicSimilarTracks / findSonicPath: a top-level "sonicMatch" array of {entry, similarity}. */
     fun sonicMatches(resp: JSONObject): List<SonicMatch> {
         val arr = resp.optJSONArray("sonicMatch")

@@ -252,6 +252,60 @@ private fun PlaybackSettings(vm: AppViewModel) {
         "Keeps play counts and \"recently played\" up to date. AudioMuse-AI uses these for taste-based mixes.",
         settings.scrobble,
     ) { on -> vm.updateSettings { it.copy(scrobble = on) } }
+    BlockedRow(vm)
+}
+
+/** Songs and artists blocked from the playing screen's menu, with a way to unblock them. */
+@Composable
+private fun BlockedRow(vm: AppViewModel) {
+    val blocked by vm.blocked.collectAsState()
+    var open by remember { mutableStateOf(false) }
+    val songs = blocked.songs.values.sortedBy { it.name.lowercase() }
+    val artists = blocked.artists.values.sortedBy { it.name.lowercase() }
+    ListItem(
+        headlineContent = { Text("Blocked songs and artists") },
+        supportingContent = {
+            Text(
+                if (songs.isEmpty() && artists.isEmpty()) {
+                    "None. Block from the ⋯ menu on the playing screen; it's kept on this phone only."
+                } else {
+                    "${songs.size} song${if (songs.size == 1) "" else "s"}, ${artists.size} artist${if (artists.size == 1) "" else "s"}. " +
+                        "Left out of mixes and radio, and skipped when they come up."
+                },
+            )
+        },
+        trailingContent = { if (songs.isNotEmpty() || artists.isNotEmpty()) Icon(Icons.Filled.ChevronRight, null) },
+        modifier = Modifier.clickable(enabled = songs.isNotEmpty() || artists.isNotEmpty()) { open = true },
+    )
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text("Blocked") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (songs.isEmpty() && artists.isEmpty()) Text("Nothing is blocked.")
+                    songs.forEach { e ->
+                        BlockedLine(e.name, e.detail) { vm.unblockSong(e.id) }
+                    }
+                    artists.forEach { e ->
+                        BlockedLine(e.name, "Artist") { vm.unblockArtist(e.id) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { open = false }) { Text("Done") } },
+        )
+    }
+}
+
+@Composable
+private fun BlockedLine(name: String, detail: String, onUnblock: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleSmall)
+            if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        TextButton(onClick = onUnblock) { Text("Unblock") }
+    }
 }
 
 /** Downloads: quality, Wi-Fi only, favourites, and what's on the phone. */

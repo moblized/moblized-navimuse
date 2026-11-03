@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import app.navimuse.BlockedEvent
 import app.navimuse.NaviMuseApp
 import app.navimuse.data.Accent
+import app.navimuse.data.Blocklist
+import app.navimuse.net.Credit
 import app.navimuse.data.Look
 import app.navimuse.data.Settings
 import app.navimuse.downloads.Downloads
@@ -261,7 +263,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** AudioMuse-AI Instant Mix: this song, then songs that sound like it. */
     fun instantMix(seed: Song) = action("Making an Instant Mix…") {
-        val similar = api().similarSongs(seed.id, mixSize()).filter { it.id != seed.id }
+        val similar = Blocklist.allowed(api().similarSongs(seed.id, mixSize())).filter { it.id != seed.id }
         if (similar.isEmpty()) {
             say("No similar songs came back. Has AudioMuse-AI analysed this song yet?")
             return@action
@@ -270,8 +272,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun mixFromAlbum(album: Album) = action("Making an Instant Mix…") {
-        val seed = api().album(album.id).songs.randomOrNull() ?: return@action
-        val similar = api().similarSongs(seed.id, mixSize()).filter { it.id != seed.id }
+        val seed = Blocklist.allowed(api().album(album.id).songs).randomOrNull() ?: return@action
+        val similar = Blocklist.allowed(api().similarSongs(seed.id, mixSize())).filter { it.id != seed.id }
         if (similar.isEmpty()) {
             say("No similar songs came back. Has AudioMuse-AI analysed this album yet?")
             return@action
@@ -280,19 +282,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun artistRadio(artist: Artist) = action("Starting artist radio…") {
-        val songs = api().similarSongsByArtist(artist.id, mixSize())
+        val songs = Blocklist.allowed(api().similarSongsByArtist(artist.id, mixSize()))
         if (songs.isEmpty()) say("No songs came back for ${artist.name}'s radio.") else play(songs, from = PlaySource("${artist.name} radio", Route.ArtistPage(artist.id)))
     }
 
     /** An Instant Mix from a random song in your library. */
     fun surpriseMix() = action("Making a surprise mix…") {
-        val seed = api().randomSongs(1).firstOrNull() ?: return@action
-        val similar = api().similarSongs(seed.id, mixSize()).filter { it.id != seed.id }
+        val seed = Blocklist.allowed(api().randomSongs(5)).firstOrNull() ?: return@action
+        val similar = Blocklist.allowed(api().similarSongs(seed.id, mixSize())).filter { it.id != seed.id }
         play(listOf(seed) + similar, from = PlaySource("Surprise mix"))
     }
 
     fun shuffleAll() = action("Shuffling your library…") {
-        play(api().randomSongs(100), from = PlaySource("Your library"))
+        play(Blocklist.allowed(api().randomSongs(100)), from = PlaySource("Your library"))
     }
 
     suspend fun sonicSimilar(song: Song): List<SonicMatch> = api().sonicSimilar(song.id, 40)
@@ -444,7 +446,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Shuffles every song in a genre. */
     fun playGenre(genre: String) = action("Shuffling $genre…") {
-        val songs = api().songsByGenre(genre, 300)
+        val songs = Blocklist.allowed(api().songsByGenre(genre, 300))
         if (songs.isEmpty()) say("No songs tagged $genre.") else play(songs, shuffle = true, from = PlaySource(genre, Route.GenrePage(genre)))
     }
 
@@ -464,6 +466,49 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 throw e
             }
         }
+    }
+
+    // --- song menu: credits, save for later, blocking ------------------------------------
+
+    suspend fun credits(song: Song): List<Credit> = api().credits(song.id)
+
+    /** Adds the song to your "Saved for later" playlist (made the first time). Only ever adds. */
+    fun saveForLater(song: Song) = action {
+        val existing = ownPlaylists().firstOrNull { it.name.equals(SAVED_FOR_LATER, ignoreCase = true) }
+        if (existing == null) {
+            api().createPlaylist(SAVED_FOR_LATER, listOf(song.id))
+        } else {
+            if (api().playlist(existing.id).songs.any { it.id == song.id }) {
+                say("\"${song.title}\" is already saved for later")
+                return@action
+            }
+            api().addToPlaylist(existing.id, listOf(song.id))
+        }
+        _playlistsVersion.update { it + 1 }
+        say("Saved for later: ${song.title}")
+    }
+
+    val blocked: StateFlow<Blocklist.Lists> = Blocklist.lists
+
+    /** Blocks a song on this phone; if it's playing, moves on to the next one. */
+    fun blockSong(song: Song) {
+        Blocklist.blockSong(song)
+        skipIfPlaying(song)
+        say("Blocked \"${song.title}\". It's left out of mixes and radio, and skipped when it comes up.")
+    }
+
+    fun blockArtist(song: Song) {
+        Blocklist.blockArtist(song)
+        skipIfPlaying(song)
+        say("Blocked ${song.artist}. Their songs are left out of mixes and radio, and skipped when they come up.")
+    }
+
+    fun unblockSong(id: String) = Blocklist.unblockSong(id)
+    fun unblockArtist(id: String) = Blocklist.unblockArtist(id)
+
+    private fun skipIfPlaying(song: Song) {
+        val current = playerState.value.current?.song ?: return
+        if (Blocklist.isBlocked(current) && playerState.value.hasNext) player.next()
     }
 
     // --- playlists (add-only) --------------------------------------------------------------
@@ -522,5 +567,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun ownPlaylists(): List<Playlist> {
         val me = login.value?.username
         return api().playlists().filter { (it.owner == null || it.owner == me) && !it.isAudioMuseManaged }
+    }
+
+    companion object {
+        /** The playlist "Save for later" adds songs to. */
+        const val SAVED_FOR_LATER = "Saved for later"
     }
 }

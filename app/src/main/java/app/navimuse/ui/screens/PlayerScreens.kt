@@ -44,6 +44,17 @@ import app.navimuse.ui.symfonium.NpElement
 import app.navimuse.ui.symfonium.StyledLine
 import app.navimuse.ui.symfonium.songFields
 import app.navimuse.data.Look
+import app.navimuse.net.Credit
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material3.AlertDialog
 import app.navimuse.data.MiniStyle
 import app.navimuse.data.PlayButtonStyle
 import app.navimuse.data.PlayerArt
@@ -269,6 +280,7 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
     val pos = rememberPosition(vm, state.isPlaying, everyMs = if (showLyrics || style != null) 250 else 500)
     var showQueue by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var showCredits by remember { mutableStateOf(false) }
     val starred = stars[song.id] ?: song.starred
     val scheme = MaterialTheme.colorScheme
     val art = rememberArtColor(song.coverArt, song.album.ifBlank { song.title })
@@ -447,26 +459,125 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                         RoundButton(Icons.Filled.Share, "Share") { shareSong(context, song) }
                         Spacer(Modifier.width(10.dp))
                     }
-                    Box {
-                        RoundButton(Icons.Filled.MoreHoriz, "More") { menu = true }
-                        SongMenu(
-                            song,
-                            expanded = menu,
-                            onDismiss = { menu = false },
-                            extra = { close ->
-                                if (info?.lyrics == true) {
-                                    MenuItem(if (showLyrics) "Hide lyrics" else "Lyrics", Icons.Filled.FormatQuote) { close(); showLyrics = !showLyrics }
-                                }
-                                soundEffects?.let { open -> MenuItem("Sound effects", Icons.Filled.GraphicEq) { close(); open() } }
-                            },
-                        )
-                    }
+                    RoundButton(Icons.Filled.MoreHoriz, "More") { menu = true }
                 }
             }
         }
     }
 
     if (showQueue) QueueSheet(vm, onDismiss = { showQueue = false })
+    if (menu) {
+        NowPlayingMenu(
+            vm,
+            song,
+            starred,
+            onDismiss = { menu = false },
+            lyrics = if (info?.lyrics == true) (if (showLyrics) "Hide lyrics" else "Lyrics") to { showLyrics = !showLyrics } else null,
+            soundEffects = soundEffects,
+            onCredits = { showCredits = true },
+        )
+    }
+    if (showCredits) CreditsDialog(vm, song, kbps, state.decoded) { showCredits = false }
+}
+
+/**
+ * Everything you can do with the song that's playing, as a sheet like Tidal's: play next,
+ * favourite, save for later, playlists, share, radio, credits, album, artist, lyrics, sound
+ * effects and blocking.
+ */
+@Composable
+private fun NowPlayingMenu(
+    vm: AppViewModel,
+    song: Song,
+    starred: Boolean,
+    onDismiss: () -> Unit,
+    lyrics: Pair<String, () -> Unit>?,
+    soundEffects: (() -> Unit)?,
+    onCredits: () -> Unit,
+) {
+    val ui = LocalUi.current
+    val context = LocalContext.current
+    val scheme = MaterialTheme.colorScheme
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = scheme.surfaceContainerLow) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
+            // The song: art, title, artist.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Cover(song.coverArt, size = 84.dp, seed = song.album.ifBlank { song.title })
+                Spacer(Modifier.width(18.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(song.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(song.artist, style = MaterialTheme.typography.titleMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            HorizontalDivider(Modifier.padding(top = 12.dp, bottom = 4.dp), color = scheme.outlineVariant)
+            fun pick(action: () -> Unit): () -> Unit = {
+                onDismiss()
+                action()
+            }
+            SheetItem("Play next", Icons.AutoMirrored.Filled.PlaylistPlay, pick { vm.playNext(listOf(song)) })
+            SheetItem(
+                if (starred) "Remove from favourites" else "Add to favourites",
+                if (starred) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                pick { vm.setStar(song.id, SubsonicClient.StarKind.SONG, !starred) },
+            )
+            SheetItem("Save for later", Icons.Filled.BookmarkBorder, pick { vm.saveForLater(song) })
+            SheetItem("Add to playlist", Icons.AutoMirrored.Filled.PlaylistAdd, pick { ui.pickPlaylistFor(listOf(song)) })
+            SheetItem("Share", Icons.Filled.Share, pick { shareSong(context, song) })
+            SheetItem("Go to track radio", Icons.Filled.Radio, pick { vm.instantMix(song) })
+            SheetItem("Credits", Icons.Filled.Info, pick(onCredits))
+            song.albumId?.let { id -> SheetItem("Go to album", Icons.Filled.Album, pick { ui.navigate(Route.AlbumPage(id)) }) }
+            song.artistId?.let { id -> SheetItem("Go to artist", Icons.Filled.Mic, pick { ui.navigate(Route.ArtistPage(id)) }) }
+            lyrics?.let { (label, toggle) -> SheetItem(label, Icons.Filled.FormatQuote, pick(toggle)) }
+            soundEffects?.let { open -> SheetItem("Sound effects", Icons.Filled.GraphicEq, pick(open)) }
+            SheetItem("Block track", Icons.Filled.Block, pick { vm.blockSong(song) })
+            SheetItem("Block artist", Icons.Filled.Block, pick { vm.blockArtist(song) })
+        }
+    }
+}
+
+@Composable
+private fun SheetItem(text: String, icon: ImageVector, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 22.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, modifier = Modifier.size(26.dp))
+        Spacer(Modifier.width(26.dp))
+        Text(text, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+/** Who made the song (from Navidrome's tags) and what it is: album, year, genre, audio. */
+@Composable
+private fun CreditsDialog(vm: AppViewModel, song: Song, kbps: Int, decoded: app.navimuse.playback.DecodedFormat?, onDismiss: () -> Unit) {
+    val loaded = rememberLoad("credits", song.id) { vm.credits(song) }
+    val audio = remember(song.id, decoded) { AudioDetails.line(song, decoded, kbps) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Credits") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(song.title, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(12.dp))
+                when (val s = loaded.state) {
+                    is Load.Loading -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    is Load.Failed -> Text(s.message, color = MaterialTheme.colorScheme.error)
+                    is Load.Ok -> {
+                        val lines = s.value + listOfNotNull(
+                            audio?.let { Credit("Audio", it) },
+                            Credit("Length", formatDuration(song.duration)).takeIf { song.duration > 0 },
+                        )
+                        lines.forEach { c ->
+                            Text(c.role, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(c.value, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 10.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 /** A round, softly filled icon button, like Tidal's on the playing screen. */

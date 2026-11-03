@@ -1,5 +1,8 @@
 package app.navimuse.net
 
+/** One line of a song's credits: what someone did (or a fact about the song), and who / what. */
+data class Credit(val role: String, val value: String)
+
 data class Song(
     val id: String,
     val title: String,

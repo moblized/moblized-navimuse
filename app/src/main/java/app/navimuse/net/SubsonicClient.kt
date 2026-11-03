@@ -137,6 +137,9 @@ class SubsonicClient(
 
     suspend fun song(id: String): Song? = Parse.singleSong(call("getSong", listOf("id" to id)))
 
+    /** Who made a song (composer, producers…) and facts about it, for Credits. */
+    suspend fun credits(id: String): List<Credit> = Parse.credits(call("getSong", listOf("id" to id)))
+
     suspend fun playlists(): List<Playlist> = Parse.playlists(call("getPlaylists"))
 
     suspend fun playlist(id: String): PlaylistDetail = Parse.playlistDetail(call("getPlaylist", listOf("id" to id)))

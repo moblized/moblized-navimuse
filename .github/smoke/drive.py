@@ -231,6 +231,37 @@ def auto_buttons():
     assert re.search(r"queueTitle=[^\n]*size=[1-9]", out), "the queue isn't shared with Android Auto"
 
 
+def open_player():
+    """Opens the playing screen from the mini player, whatever song it shows."""
+    n = find(desc="Pause") or find(desc="Play")
+    _, y1, _, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+    adb("shell", "input", "tap", "300", str((y1 + y2) // 2))
+    wait_for(text="Playing from")
+
+
+def song_menu():
+    # The ⋯ sheet on the playing screen, like Tidal's.
+    open_player()
+    tap(desc="More")
+    wait_for(text="Go to track radio")
+    shot("12a-song-menu")
+    tap(text="Save for later")
+    wait_for(text="Saved for later: ", contains=True, timeout=20)
+    saved = [p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Saved for later"]
+    assert saved and saved[0]["songCount"] == 1, f"no Saved for later playlist with the song: {saved}"
+    tap(desc="More")
+    tap(text="Credits")
+    wait_for(text="Done")
+    time.sleep(2)
+    shot("12b-credits")
+    tap(text="Done")
+    tap(desc="More")
+    tap_node(scroll_to("Block track", swipes=3))
+    wait_for(text="Blocked \"", contains=True, timeout=15)
+    shot("12c-blocked")
+    back()  # closes the playing screen
+
+
 def save_queue():
     # Save what's playing (the Road trip playlist) from the queue, as you would an Instant Mix.
     road_trip = next(p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Road trip")
@@ -550,6 +581,7 @@ for name, fn in [
     ("play a song + now-playing report", play),
     ("now playing screen and queue", now_playing),
     ("Android Auto buttons: favourite, shuffle, repeat, radio", auto_buttons),
+    ("song menu: save for later, credits, block", song_menu),
     ("save the queue as a playlist", save_queue),
     ("swipe a song right to add it to the queue", swipe_to_queue),
     ("Mixes tab", audiomuse_tab),
