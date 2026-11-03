@@ -145,6 +145,19 @@ fun AppRoot(vm: AppViewModel) {
     var saveFor by remember { mutableStateOf<Pair<List<Song>, String>?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val saveable = rememberSaveableStateHolder()
+    // A page's scroll position is kept while it's open (so Back returns to where you were),
+    // and forgotten once it's closed, so opening it again starts at the top.
+    fun pageKey(index: Int, route: Route) = "route-${index + 1}-$route"
+    fun popPage() {
+        if (stack.isEmpty()) return
+        val i = stack.lastIndex
+        saveable.removeState(pageKey(i, stack[i]))
+        stack.removeAt(i)
+    }
+    fun clearPages() {
+        stack.forEachIndexed { i, r -> saveable.removeState(pageKey(i, r)) }
+        stack.clear()
+    }
     val playerState by vm.playerState.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     var bottomBarPx by remember { mutableIntStateOf(0) }
@@ -185,14 +198,14 @@ fun AppRoot(vm: AppViewModel) {
             selectTab = { t ->
                 showPlayer = false
                 tab = t
-                stack.clear()
+                clearPages()
             },
             openPlayer = { showPlayer = true },
         )
     }
 
     BackHandler(enabled = showPlayer || stack.isNotEmpty()) {
-        if (showPlayer) showPlayer = false else stack.removeAt(stack.lastIndex)
+        if (showPlayer) showPlayer = false else popPage()
     }
 
     CompositionLocalProvider(LocalUi provides actions) {
@@ -213,7 +226,7 @@ fun AppRoot(vm: AppViewModel) {
                                 selected = tab,
                                 onSelect = { t ->
                                     tab = t
-                                    stack.clear()
+                                    clearPages()
                                 },
                             )
                         } else {
@@ -234,8 +247,8 @@ fun AppRoot(vm: AppViewModel) {
                             }
                         }
                     } else {
-                        val onBack: () -> Unit = { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
-                        saveable.SaveableStateProvider("route-${stack.size}-$top") {
+                        val onBack: () -> Unit = { popPage() }
+                        saveable.SaveableStateProvider(pageKey(stack.lastIndex, top)) {
                             when (top) {
                                 is Route.AlbumPage -> AlbumScreen(vm, top.id, onBack)
                                 is Route.ArtistPage -> ArtistScreen(vm, top.id, onBack)
