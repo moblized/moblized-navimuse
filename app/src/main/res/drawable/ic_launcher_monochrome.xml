@@ -1,24 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Themed-icon version (Android 13+): the violin and note as one shape. -->
+<!-- Themed-icon version (Android 13+): the treble clef. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateX="62" android:translateY="60" android:rotation="38" android:scaleX="0.6" android:scaleY="0.6">
-    <group android:translateY="18.75">
-        <path android:pathData="M0,-26 C7,-26 12.5,-22 12.5,-15 C12.5,-11 11.5,-9 10.5,-7.5 C8,-5 8,1 10.5,3.5 C14,6.5 15.5,10 15.5,14.5 C15.5,22 9,26 0,26 C-9,26 -15.5,22 -15.5,14.5 C-15.5,10 -14,6.5 -10.5,3.5 C-8,1 -8,-5 -10.5,-7.5 C-11.5,-9 -12.5,-11 -12.5,-15 C-12.5,-22 -7,-26 0,-26 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineJoin="round" />
-        <path android:pathData="M-2.3,-25 L-2.1,-47 L2.1,-47 L2.3,-25 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineJoin="round" />
-        <path android:pathData="M-2.4,-47 L-2.2,-55 L2.2,-55 L2.4,-47 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineJoin="round" />
-        <path android:pathData="M0,-63.5 A4.2,4.2 0 1,1 0,-55.1 A4.2,4.2 0 1,1 0,-63.5 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineJoin="round" />
-        <path android:pathData="M-3.4,13.5 L-2.2,24 L2.2,24 L3.4,13.5 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineJoin="round" />
-    </group>
-    </group>
-    <group android:translateX="38" android:translateY="42" android:scaleX="0.7" android:scaleY="0.7">
-    <group android:translateX="-29.5" android:translateY="-34.8">
-        <path android:pathData="M18.6,47.3 A7.2,5.2 -22 1,1 31.9,41.9 A7.2,5.2 -22 1,1 18.6,47.3 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineJoin="round" />
-        <path android:pathData="M29.4,44.5 L29.4,21 L33,19.5 L33,42.5 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineJoin="round" />
-        <path android:pathData="M33,19.5 C34,25 42,26.5 41,35 C40,30 36.5,28 33,27.5 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineJoin="round" />
+    <group android:translateX="54" android:translateY="54" android:scaleX="0.66" android:scaleY="0.66">
+    <group android:translateX="-51.5" android:translateY="-54.5">
+        <path android:pathData="M56,66 C50,68 47,62 51,58 C56,53 66,56 67,64 C68,74 58,80 50,79 C40,78 34,70 36,60 C38,50 48,44 56,38 C63,32 67,24 64,18 C62,13 55,13 54,20 C53,30 55,60 57,86 C58,94 50,96 47,91" android:strokeColor="#FF000000" android:strokeWidth="7.0" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M43,90.5 A4.6,4.6 0 1,1 52.2,90.5 A4.6,4.6 0 1,1 43,90.5 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="1" />
     </group>
     </group>
 </vector>
