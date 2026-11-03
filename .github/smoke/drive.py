@@ -131,7 +131,12 @@ def step(name, fn):
     except Exception as e:  # noqa: BLE001
         results.append(f"FAIL  {name}: {e}")
         print(f"FAIL  {name}: {e}", flush=True)
-        shot(f"fail-{re.sub(r'[^a-z0-9]+', '-', name.lower())}")
+        slug = re.sub(r'[^a-z0-9]+', '-', name.lower())
+        shot(f"fail-{slug}")
+        # What uiautomator saw, to tell a test problem from an app problem.
+        adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", timeout=40)
+        with open(f"{OUT}/fail-{slug}.xml", "w") as f:
+            f.write(adb("shell", "cat", "/sdcard/ui.xml"))
         return False
 
 
@@ -239,9 +244,17 @@ def open_player():
         n = find(desc="Pause") or find(desc="Play")
         if n is None:
             time.sleep(1.5)
-    assert n is not None, "no mini player on screen"
-    _, y1, _, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
-    adb("shell", "input", "tap", "300", str((y1 + y2) // 2))
+    if n is not None:
+        _, y1, _, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+        y = (y1 + y2) // 2
+    else:
+        # Fall back to where the mini player sits: just above the bottom tabs.
+        home = wait_for(text="Home")
+        _, y1, _, y2 = map(int, re.findall(r"\d+", home.get("bounds")))
+        y = (y1 + y2) // 2 - 228
+        with open(f"{OUT}/no-mini-player.xml", "w") as f:
+            f.write(adb("shell", "cat", "/sdcard/ui.xml"))
+    adb("shell", "input", "tap", "300", str(y))
     wait_for(text="Playing from")
 
 
