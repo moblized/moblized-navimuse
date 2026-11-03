@@ -233,7 +233,13 @@ def auto_buttons():
 
 def open_player():
     """Opens the playing screen from the mini player, whatever song it shows."""
-    n = find(desc="Pause") or find(desc="Play")
+    end = time.time() + 30
+    n = None
+    while n is None and time.time() < end:
+        n = find(desc="Pause") or find(desc="Play")
+        if n is None:
+            time.sleep(1.5)
+    assert n is not None, "no mini player on screen"
     _, y1, _, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
     adb("shell", "input", "tap", "300", str((y1 + y2) // 2))
     wait_for(text="Playing from")
@@ -265,8 +271,7 @@ def song_menu():
 def save_queue():
     # Save what's playing (the Road trip playlist) from the queue, as you would an Instant Mix.
     road_trip = next(p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Road trip")
-    tap(text="Sine Song 1", last=True)  # the mini player
-    wait_for(text="Playing from")
+    open_player()
     tap(desc="Queue")
     tap(text="Save as playlist", contains=True)
     wait_for(text="Save as playlist")  # the save box's title (the queue's button has an icon and spaces)
