@@ -412,7 +412,8 @@ APP_STYLE = {
 
 
 def import_link(url):
-    tap(text="Home")
+    # Collection's gear: Home may be scrolled down (an app style's sections), hiding its own.
+    tap(text="Collection")
     tap(desc="Settings")
     tap_node(scroll_to("Import link"))
     wait_for(text="Import from a link")
