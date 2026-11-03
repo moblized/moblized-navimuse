@@ -13,11 +13,13 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import kotlinx.coroutines.launch
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlin.math.abs
-import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -384,66 +386,114 @@ fun SongRow(
 ) {
     var menu by remember { mutableStateOf(false) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val downloads by LocalUi.current.vm.downloads.collectAsState()
+    val ui = LocalUi.current
+    val downloads by ui.vm.downloads.collectAsState()
     val saved = downloads[song.id]?.state == Downloads.State.DONE
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clickable(onClick = onPlay)
-            .padding(start = 16.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (showArt) {
-            Box(contentAlignment = Alignment.Center) {
-                Cover(song.coverArt, size = 48.dp, seed = song.album.ifBlank { song.title })
-                if (isCurrent) {
-                    Box(Modifier.size(48.dp).clip(ArtShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.GraphicEq, null, tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(22.dp))
+    // Swipe right to add the song to the queue (can be turned off in Customize).
+    val swipe = LocalLook.current.swipeToQueue
+    val drag = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    val mark = with(LocalDensity.current) { 88.dp.toPx() }
+    val accent = MaterialTheme.colorScheme.accent
+    val onAccent = MaterialTheme.colorScheme.onSecondary
+    Box(modifier.fillMaxWidth()) {
+        if (drag.value > 0f) {
+            // What's uncovered as the row slides: an accent strip saying what letting go will do.
+            Row(
+                Modifier
+                    .matchParentSize()
+                    .drawWithContent { clipRect(right = drag.value) { this@drawWithContent.drawContent() } }
+                    .background(if (drag.value >= mark) accent else accent.copy(alpha = 0.5f))
+                    .padding(start = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null, tint = onAccent, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Add to queue", style = MaterialTheme.typography.labelLarge, color = onAccent, maxLines = 1)
+            }
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .graphicsLayer { translationX = drag.value }
+                .pointerInput(swipe, song.id) {
+                    if (!swipe) return@pointerInput
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            scope.launch {
+                                if (drag.value >= mark) ui.vm.addToQueue(listOf(song))
+                                drag.animateTo(0f, spring())
+                            }
+                        },
+                        onDragCancel = { scope.launch { drag.animateTo(0f, spring()) } },
+                    ) { change, amount ->
+                        // Only rightwards; a left swipe does nothing.
+                        if (amount > 0f || drag.value > 0f) {
+                            change.consume()
+                            val before = drag.value
+                            val next = (before + amount).coerceIn(0f, size.width * 0.6f)
+                            if (before < mark && next >= mark) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            scope.launch { drag.snapTo(next) }
+                        }
                     }
                 }
-            }
-            Spacer(Modifier.width(14.dp))
-        } else if (number != null) {
-            Box(Modifier.widthIn(min = 26.dp), contentAlignment = Alignment.CenterStart) {
-                if (isCurrent) {
-                    Icon(Icons.Filled.GraphicEq, null, tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(18.dp))
-                } else {
-                    Text(number.toString(), style = MaterialTheme.typography.bodyMedium, color = muted)
+                .clickable(onClick = onPlay)
+                .padding(start = 16.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (showArt) {
+                Box(contentAlignment = Alignment.Center) {
+                    Cover(song.coverArt, size = 48.dp, seed = song.album.ifBlank { song.title })
+                    if (isCurrent) {
+                        Box(Modifier.size(48.dp).clip(ArtShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.GraphicEq, null, tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(22.dp))
+                        }
+                    }
                 }
-            }
-            Spacer(Modifier.width(10.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                song.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = if (isCurrent) MaterialTheme.colorScheme.accent else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (saved) {
-                    Icon(Icons.Filled.OfflinePin, "Downloaded", tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(14.dp))
+            } else if (number != null) {
+                Box(Modifier.widthIn(min = 26.dp), contentAlignment = Alignment.CenterStart) {
+                    if (isCurrent) {
+                        Icon(Icons.Filled.GraphicEq, null, tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(18.dp))
+                    } else {
+                        Text(number.toString(), style = MaterialTheme.typography.bodyMedium, color = muted)
+                    }
                 }
+                Spacer(Modifier.width(10.dp))
+            }
+            Column(Modifier.weight(1f)) {
                 Text(
-                    listOf(song.artist, song.album.takeIf { showArt }).filter { !it.isNullOrBlank() }.joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = muted,
+                    song.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (isCurrent) MaterialTheme.colorScheme.accent else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (saved) {
+                        Icon(Icons.Filled.OfflinePin, "Downloaded", tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Text(
+                        listOf(song.artist, song.album.takeIf { showArt }).filter { !it.isNullOrBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-        }
-        Text(
-            trailingText ?: formatDuration(song.duration),
-            style = MaterialTheme.typography.labelMedium,
-            color = muted,
-            modifier = Modifier.padding(horizontal = 6.dp),
-        )
-        Box {
-            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More", tint = muted) }
-            SongMenu(song, expanded = menu, onDismiss = { menu = false }, extra = extraMenu)
+            Text(
+                trailingText ?: formatDuration(song.duration),
+                style = MaterialTheme.typography.labelMedium,
+                color = muted,
+                modifier = Modifier.padding(horizontal = 6.dp),
+            )
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More", tint = muted) }
+                SongMenu(song, expanded = menu, onDismiss = { menu = false }, extra = extraMenu)
+            }
         }
     }
 }

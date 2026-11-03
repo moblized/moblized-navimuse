@@ -131,6 +131,8 @@ data class Look(
     val home: List<HomeSection> = DEFAULT_HOME,
     val collection: List<CollectionEntry> = DEFAULT_COLLECTION,
     val collectionRecent: Boolean = true,
+    /** Swipe a song in a list to the right to add it to the queue. */
+    val swipeToQueue: Boolean = true,
     // playing screen
     val playerBackground: PlayerBackground = PlayerBackground.SONG_COLOUR,
     val playerArt: PlayerArt = PlayerArt.SOFT,
@@ -182,6 +184,7 @@ data class Look(
         put("home", JSONArray(home.map { it.name }))
         put("collection", JSONArray(collection.map { it.name }))
         put("collectionRecent", collectionRecent)
+        put("swipeToQueue", swipeToQueue)
         put("playerBackground", playerBackground.name)
         put("playerArt", playerArt.name)
         put("artSize", artSize.name)
@@ -241,6 +244,7 @@ data class Look(
                 home = o.enumList("home", d.home),
                 collection = o.enumList("collection", d.collection),
                 collectionRecent = o.optBoolean("collectionRecent", d.collectionRecent),
+                swipeToQueue = o.optBoolean("swipeToQueue", d.swipeToQueue),
                 playerBackground = o.enumOr("playerBackground", d.playerBackground),
                 playerArt = o.enumOr("playerArt", d.playerArt),
                 artSize = o.enumOr("artSize", d.artSize),

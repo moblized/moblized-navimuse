@@ -240,6 +240,16 @@ def save_queue():
     back()  # closes the playing screen
 
 
+def swipe_to_queue():
+    # Still on the Road trip playlist: swipe a song right to add it to the end of the queue.
+    n = scroll_to("Sine Song 2")
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+    y = (y1 + y2) // 2
+    adb("shell", "input", "swipe", "150", str(y), "800", str(y), "500")
+    wait_for(text="Added to queue: Sine Song 2", timeout=15)
+    shot("11d-swiped-to-queue")
+
+
 def audiomuse_tab():
     tap(text="Mixes")
     wait_for(text="Instant Mix")
@@ -513,6 +523,7 @@ for name, fn in [
     ("play a song + now-playing report", play),
     ("now playing screen and queue", now_playing),
     ("save the queue as a playlist", save_queue),
+    ("swipe a song right to add it to the queue", swipe_to_queue),
     ("Mixes tab", audiomuse_tab),
     ("genres", genres),
     ("search", search),

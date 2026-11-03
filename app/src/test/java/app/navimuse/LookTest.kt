@@ -32,6 +32,7 @@ class LookTest {
             home = listOf(HomeSection.PLAYLISTS, HomeSection.MIXES),
             collection = listOf(CollectionEntry.DOWNLOADS, CollectionEntry.ALBUMS),
             collectionRecent = false,
+            swipeToQueue = false,
             playerArt = PlayerArt.RECORD,
             showShare = true,
             keepScreenOn = true,

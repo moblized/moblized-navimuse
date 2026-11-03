@@ -193,6 +193,15 @@ fun CustomizeScreen(vm: AppViewModel, onBack: () -> Unit) {
                 change { it.copy(collectionRecent = on) }
             }
 
+            // --- song lists ---------------------------------------------------------------------
+            HorizontalDivider(Modifier.padding(top = 8.dp))
+            Group("Song lists")
+            SwitchRow(
+                "Swipe a song right to add it to the queue",
+                "Works in albums, playlists, search, favourites and downloads.",
+                look.swipeToQueue,
+            ) { on -> change { it.copy(swipeToQueue = on) } }
+
             // --- playing screen -----------------------------------------------------------------
             HorizontalDivider(Modifier.padding(top = 8.dp))
             Group("Playing screen")
