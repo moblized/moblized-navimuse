@@ -147,6 +147,8 @@ def step(name, fn):
         adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", timeout=40)
         with open(f"{OUT}/fail-{slug}.xml", "w") as f:
             f.write(adb("shell", "cat", "/sdcard/ui.xml"))
+        with open(f"{OUT}/fail-{slug}-logcat.txt", "w") as f:
+            f.write(adb("logcat", "-d", "-t", "400"))
         return False
 
 
@@ -507,6 +509,8 @@ def fine_tune():
     shot("22e-fine-tune")
     # Set the dark background to exactly #203040 with the hex box.
     tap(text="Background")
+    time.sleep(2)
+    shot("22e2-colour-picker")
     tap(text="Hex code")
     adb("shell", "input", "keyevent", "123")  # end of the text
     for _ in range(6):
