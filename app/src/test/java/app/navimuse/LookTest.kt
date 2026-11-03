@@ -33,7 +33,7 @@ class LookTest {
             collection = listOf(CollectionEntry.DOWNLOADS, CollectionEntry.ALBUMS),
             collectionRecent = false,
             playerArt = PlayerArt.RECORD,
-            showShare = false,
+            showShare = true,
             keepScreenOn = true,
             miniStyle = MiniStyle.FLOATING,
             miniPrevious = true,
@@ -55,6 +55,12 @@ class LookTest {
         assertEquals(Accent.THEME, look.accent)
         assertEquals(FontChoice.SERIF, look.font)
         assertEquals(listOf(HomeSection.MIXES, HomeSection.DISCOVER), look.home)
+    }
+
+    @Test
+    fun noShareButtonUnlessSwitchedOn() {
+        assertEquals(false, Look().showShare)
+        assertEquals(false, Look.fromJson("{}").showShare)
     }
 
     @Test

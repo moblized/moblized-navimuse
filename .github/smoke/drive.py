@@ -206,7 +206,15 @@ def now_playing():
     tap(desc="Repeat")
     time.sleep(2)
     shot("10-now-playing")
-    tap(desc="Queue")
+    assert find(desc="Share") is None, "the playing screen still has a Share button"
+    # Tap the art for lyrics, then tap the lyrics to get the art back.
+    tap(desc="Album art")
+    wait_for(desc="Lyrics")
+    shot("10b-lyrics")
+    tap(desc="Lyrics")
+    wait_for(desc="Album art")
+    # Swipe up from the bottom of the screen for the queue.
+    adb("shell", "input", "swipe", "540", "2150", "540", "1250", "350")
     wait_for(text="Save as playlist", contains=True)
     shot("11-queue")
     back()
@@ -353,12 +361,11 @@ def customize():
     tap(desc="Pink")
     # Home: switch on Random songs.
     tap_node(scroll_to("Random songs", swipes=20))
-    # Playing screen: a spinning record, a round play button, no share button.
+    # Playing screen: a spinning record and a round play button (Share is off by default).
     tap_node(scroll_to("Album art", swipes=10))
     tap(text="Spinning record")
     tap_node(scroll_to("Circle", swipes=6))
-    tap_node(scroll_to("Share button", swipes=8))
-    tap_node(scroll_to("Open the playing screen", swipes=8))
+    tap_node(scroll_to("Open the playing screen", swipes=10))
     wait_for(text="Playing from")
     time.sleep(3)
     assert find(desc="Share") is None, "the share button is still on the playing screen"

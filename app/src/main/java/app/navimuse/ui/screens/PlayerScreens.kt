@@ -52,6 +52,8 @@ import app.navimuse.data.TitleAlign
 import app.navimuse.ui.theme.ArtShape
 import app.navimuse.ui.theme.LocalLook
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -291,27 +293,43 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
         onDispose { view.keepScreenOn = false }
     }
 
+    // Swipe up from the bottom part of the screen to open the queue.
+    val openQueueAt = with(LocalDensity.current) { 72.dp.toPx() }
+    val lyricsOpen by rememberUpdatedState(showLyrics)
     Surface(
         Modifier
             .fillMaxSize()
             .graphicsLayer { translationY = dragDown.value }
-            .pointerInput(showLyrics) {
-                if (showLyrics) return@pointerInput
+            .pointerInput(Unit) {
+                var startY = 0f
+                var moved = 0f
                 detectVerticalDragGestures(
+                    onDragStart = { offset ->
+                        startY = offset.y
+                        moved = 0f
+                    },
                     onDragEnd = {
+                        val queue = startY > size.height * 0.65f && -moved > openQueueAt
                         scope.launch {
-                            if (dragDown.value > closeAt) {
-                                onClose()
-                                dragDown.snapTo(0f)
-                            } else {
-                                dragDown.animateTo(0f)
+                            when {
+                                queue -> {
+                                    showQueue = true
+                                    dragDown.animateTo(0f)
+                                }
+                                dragDown.value > closeAt -> {
+                                    onClose()
+                                    dragDown.snapTo(0f)
+                                }
+                                else -> dragDown.animateTo(0f)
                             }
                         }
                     },
                     onDragCancel = { scope.launch { dragDown.animateTo(0f) } },
                 ) { change, amount ->
                     change.consume()
-                    scope.launch { dragDown.snapTo((dragDown.value + amount).coerceAtLeast(0f)) }
+                    moved += amount
+                    // Pull down to close (not while reading lyrics, which scroll).
+                    if (!lyricsOpen) scope.launch { dragDown.snapTo((dragDown.value + amount).coerceAtLeast(0f)) }
                 }
             },
         color = scheme.background,
@@ -368,11 +386,12 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
 
                 if (showLyrics) {
                     Spacer(Modifier.height(16.dp))
-                    LyricsPanel(vm, song.id, pos, Modifier.fillMaxWidth().weight(1f))
+                    LyricsPanel(vm, song.id, pos, Modifier.fillMaxWidth().weight(1f), onClose = { showLyrics = false })
                     Spacer(Modifier.height(16.dp))
                 } else {
                     Spacer(Modifier.weight(0.5f))
-                    NowPlayingArt(vm, song, state.isPlaying, st, look)
+                    // Tap the art for lyrics (when the server has them).
+                    NowPlayingArt(vm, song, state.isPlaying, st, look, onTap = if (info?.lyrics == true) ({ showLyrics = true }) else null)
                     Spacer(Modifier.weight(0.5f))
                 }
 
@@ -504,7 +523,15 @@ private fun openOutputSwitcher(context: Context) {
  * or from a Symfonium style that sets them (rounded, inset, uncropped or spinning).
  */
 @Composable
-private fun ColumnScope.NowPlayingArt(vm: AppViewModel, song: Song, playing: Boolean, st: NowPlayingStyle?, look: Look) {
+private fun ColumnScope.NowPlayingArt(
+    vm: AppViewModel,
+    song: Song,
+    playing: Boolean,
+    st: NowPlayingStyle?,
+    look: Look,
+    onTap: (() -> Unit)? = null,
+) {
+    val tapSource = remember { MutableInteractionSource() }
     val record = st?.coverRotates == true || (st?.coverCornerPercent == null && look.playerArt == PlayerArt.RECORD)
     val rotation = remember { Animatable(0f) }
     LaunchedEffect(playing, record) {
@@ -527,6 +554,8 @@ private fun ColumnScope.NowPlayingArt(vm: AppViewModel, song: Song, playing: Boo
             .fillMaxWidth()
             .widthIn(max = 440.dp)
             .aspectRatio(1f)
+            .semantics { contentDescription = "Album art" }
+            .let { if (onTap != null) it.clickable(tapSource, indication = null, onClickLabel = "Show lyrics", onClick = onTap) else it }
             .let { if (look.swipeArt) it.swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() }) else it }
             .graphicsLayer { rotationZ = if (record) rotation.value else 0f },
         contentAlignment = Alignment.Center,
@@ -795,11 +824,17 @@ private fun PlayerAction(label: String, icon: ImageVector, active: Boolean = fal
  * line lit; tap any line to jump there.
  */
 @Composable
-private fun LyricsPanel(vm: AppViewModel, songId: String, positionMs: Long, modifier: Modifier = Modifier) {
+private fun LyricsPanel(vm: AppViewModel, songId: String, positionMs: Long, modifier: Modifier = Modifier, onClose: () -> Unit = {}) {
     val state by vm.playerState.collectAsState()
     val song = state.current?.song
     val loaded = rememberLoad("lyrics", songId) { song?.let { vm.lyrics(it) } }
-    Box(modifier, contentAlignment = Alignment.Center) {
+    // Tap anywhere that isn't a line to go back to the art (tapping a line jumps there).
+    Box(
+        modifier
+            .semantics { contentDescription = "Lyrics" }
+            .clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = "Show the album art", onClick = onClose),
+        contentAlignment = Alignment.Center,
+    ) {
         when (val s = loaded.state) {
             is Load.Loading -> CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
             is Load.Failed -> LyricsMessage(s.message)

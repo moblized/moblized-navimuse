@@ -143,7 +143,8 @@ data class Look(
     val showArtistPhoto: Boolean = true,
     val showOutputButton: Boolean = true,
     val showPlayingFrom: Boolean = true,
-    val showShare: Boolean = true,
+    /** Off by default: the playing screen has no Share button unless switched on in Customize. */
+    val showShare: Boolean = false,
     val swipeArt: Boolean = true,
     val keepScreenOn: Boolean = false,
     // mini player
