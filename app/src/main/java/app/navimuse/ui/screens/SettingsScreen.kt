@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -104,6 +105,17 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             )
 
             HorizontalDivider()
+            Group("Appearance")
+            ThemeModePicker(settings.theme) { mode -> vm.updateSettings { it.copy(theme = mode) } }
+            ListItem(
+                headlineContent = { Text("Customize") },
+                supportingContent = { Text("Colours, fonts, icons, Home, Collection, tabs, the playing screen and mini player") },
+                leadingContent = { Icon(Icons.Filled.Tune, null, tint = MaterialTheme.colorScheme.secondary) },
+                trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
+                modifier = Modifier.clickable { ui.navigate(Route.Customize) },
+            )
+
+            HorizontalDivider()
             Group("AudioMuse-AI (optional)")
             AudioMuseSettings(vm)
 
@@ -174,26 +186,6 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
             UpdateRow(vm)
 
-            HorizontalDivider()
-            Group("Appearance")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                ThemeMode.entries.forEachIndexed { i, mode ->
-                    SegmentedButton(
-                        selected = settings.theme == mode,
-                        onClick = { vm.updateSettings { it.copy(theme = mode) } },
-                        shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
-                    ) { Text(mode.label) }
-                }
-            }
-            Text(
-                "The home-screen icon switches to its dark version when the app is in dark mode.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-            ThemeSettings(vm)
-            IconPackSettings(vm)
-
             HorizontalDivider(Modifier.padding(top = 8.dp))
             Text(
                 "NaviMuse ${BuildConfig.VERSION_NAME}",
@@ -260,8 +252,28 @@ private fun UpdateRow(vm: AppViewModel) {
     )
 }
 
+/** Follow phone / Light / Dark, and a note that the app icon follows it. */
 @Composable
-private fun Group(title: String) {
+internal fun ThemeModePicker(value: ThemeMode, onPick: (ThemeMode) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        ThemeMode.entries.forEachIndexed { i, mode ->
+            SegmentedButton(
+                selected = value == mode,
+                onClick = { onPick(mode) },
+                shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
+            ) { Text(mode.label) }
+        }
+    }
+    Text(
+        "The home-screen icon switches to its dark version when the app is in dark mode.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+internal fun Group(title: String) {
     Text(
         title,
         style = MaterialTheme.typography.titleLarge,
@@ -270,7 +282,7 @@ private fun Group(title: String) {
 }
 
 @Composable
-private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = if (subtitle != null) {
@@ -285,7 +297,7 @@ private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onChan
 
 /** How the audio details under the seek bar read (Tidal, Symfonium, or hidden). */
 @Composable
-private fun DetailsStylePicker(value: DetailsStyle, onPick: (DetailsStyle) -> Unit) {
+internal fun DetailsStylePicker(value: DetailsStyle, onPick: (DetailsStyle) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     ListItem(
         headlineContent = { Text("Audio details on the playing screen") },

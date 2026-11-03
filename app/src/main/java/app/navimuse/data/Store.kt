@@ -45,6 +45,8 @@ data class Settings(
     /** Symfonium icon pack in use ("<package>/<pack id>"), or null for NaviMuse's own icons. */
     val iconPack: String? = null,
     val detailsStyle: DetailsStyle = DetailsStyle.TIDAL,
+    /** Everything chosen in Settings → Customize. */
+    val look: Look = Look(),
 )
 
 /** Saved logins and settings, in plain SharedPreferences (the secrets inside are encrypted). */
@@ -110,6 +112,7 @@ class Store(context: Context) {
         themeId = prefs.getString("customTheme", null),
         iconPack = prefs.getString("iconPack", null),
         detailsStyle = enumOr(prefs.getString("detailsStyle", null), DetailsStyle.TIDAL),
+        look = Look.fromJson(prefs.getString("look", null)),
     )
 
     fun saveSettings(s: Settings) {
@@ -128,6 +131,7 @@ class Store(context: Context) {
             .putString("customTheme", s.themeId)
             .putString("iconPack", s.iconPack)
             .putString("detailsStyle", s.detailsStyle.name)
+            .putString("look", s.look.toJson())
             .apply()
     }
 

@@ -1,17 +1,32 @@
 package app.navimuse.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.graphics.ColorUtils
+import app.navimuse.data.Accent
+import app.navimuse.data.DarkShade
+import app.navimuse.data.FontChoice
+import app.navimuse.data.Look
+import app.navimuse.data.TitleFont
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -78,6 +93,23 @@ private val DarkColors = darkColorScheme(
     scrim = Ink,
 )
 
+/** The dark look on dark grey instead of black. */
+private val DarkGreyColors = DarkColors.copy(
+    background = Color(0xFF121212),
+    surface = Color(0xFF121212),
+    surfaceDim = Color(0xFF121212),
+    surfaceVariant = Color(0xFF262626),
+    surfaceBright = Color(0xFF383838),
+    surfaceContainerLowest = Color(0xFF0C0C0C),
+    surfaceContainerLow = Color(0xFF1A1A1A),
+    surfaceContainer = Color(0xFF202020),
+    surfaceContainerHigh = Color(0xFF292929),
+    surfaceContainerHighest = Color(0xFF333333),
+    primaryContainer = Color(0xFF2E2E2E),
+    secondaryContainer = Color(0xFF292929),
+    outlineVariant = Color(0xFF353535),
+)
+
 private val LightColors = lightColorScheme(
     primary = Ink,
     onPrimary = Paper,
@@ -128,39 +160,50 @@ val Sans = FontFamily(
 /** Instrument Sans condensed bold, for page titles, names and the song that's playing. */
 val Condensed = FontFamily(Font(R.font.instrument_sans_condensed_bold, FontWeight.Bold))
 
-private fun display(size: Int, line: Int, tracking: Double) = TextStyle(
-    fontFamily = Condensed,
-    fontWeight = FontWeight.Bold,
-    fontSize = size.sp,
-    lineHeight = line.sp,
-    letterSpacing = tracking.sp,
-)
-
-private fun sans(weight: FontWeight, size: Double, line: Int, tracking: Double = 0.0) = TextStyle(
-    fontFamily = Sans,
-    fontWeight = weight,
-    fontSize = size.sp,
-    lineHeight = line.sp,
-    letterSpacing = tracking.sp,
-)
-
-private val AppTypography = Typography(
-    displayLarge = display(56, 56, -1.2),
-    displayMedium = display(46, 48, -0.9),
-    displaySmall = display(38, 40, -0.6),
-    headlineLarge = display(34, 36, -0.5),
-    headlineMedium = display(30, 32, -0.4),
-    headlineSmall = sans(FontWeight.Bold, 22.0, 28, -0.3),
-    titleLarge = sans(FontWeight.Bold, 20.0, 24, -0.3),
-    titleMedium = sans(FontWeight.SemiBold, 16.0, 20, -0.1),
-    titleSmall = sans(FontWeight.SemiBold, 14.0, 18),
-    bodyLarge = sans(FontWeight.Normal, 16.0, 22),
-    bodyMedium = sans(FontWeight.Normal, 14.0, 20),
-    bodySmall = sans(FontWeight.Normal, 12.5, 16, 0.1),
-    labelLarge = sans(FontWeight.SemiBold, 14.0, 18, 0.1),
-    labelMedium = sans(FontWeight.Medium, 12.0, 16, 0.2),
-    labelSmall = sans(FontWeight.Medium, 11.0, 14, 0.3),
-)
+/** Type for the font, title style and text size chosen in Customize. */
+private fun typographyFor(look: Look): Typography {
+    val body = when (look.font) {
+        FontChoice.INSTRUMENT -> Sans
+        FontChoice.PHONE -> FontFamily.Default
+        FontChoice.SERIF -> FontFamily.Serif
+        FontChoice.MONO -> FontFamily.Monospace
+    }
+    val narrow = look.font == FontChoice.INSTRUMENT && look.titleFont == TitleFont.CONDENSED
+    val titles = if (narrow) Condensed else body
+    val k = look.textSize.scale
+    fun display(size: Int, line: Int, tracking: Double) = TextStyle(
+        fontFamily = titles,
+        fontWeight = FontWeight.Bold,
+        fontSize = (size * k).sp,
+        lineHeight = (line * k).sp,
+        // Tight tracking suits the narrow cut; wider fonts get less of it.
+        letterSpacing = (if (narrow) tracking else tracking * 0.4).sp,
+    )
+    fun sans(weight: FontWeight, size: Double, line: Int, tracking: Double = 0.0) = TextStyle(
+        fontFamily = body,
+        fontWeight = weight,
+        fontSize = (size * k).sp,
+        lineHeight = (line * k).sp,
+        letterSpacing = tracking.sp,
+    )
+    return Typography(
+        displayLarge = display(56, 56, -1.2),
+        displayMedium = display(46, 48, -0.9),
+        displaySmall = display(38, 40, -0.6),
+        headlineLarge = display(34, 36, -0.5),
+        headlineMedium = display(30, 32, -0.4),
+        headlineSmall = sans(FontWeight.Bold, 22.0, 28, -0.3),
+        titleLarge = sans(FontWeight.Bold, 20.0, 24, -0.3),
+        titleMedium = sans(FontWeight.SemiBold, 16.0, 20, -0.1),
+        titleSmall = sans(FontWeight.SemiBold, 14.0, 18),
+        bodyLarge = sans(FontWeight.Normal, 16.0, 22),
+        bodyMedium = sans(FontWeight.Normal, 14.0, 20),
+        bodySmall = sans(FontWeight.Normal, 12.5, 16, 0.1),
+        labelLarge = sans(FontWeight.SemiBold, 14.0, 18, 0.1),
+        labelMedium = sans(FontWeight.Medium, 12.0, 16, 0.2),
+        labelSmall = sans(FontWeight.Medium, 11.0, 14, 0.3),
+    )
+}
 
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
@@ -170,8 +213,15 @@ private val AppShapes = Shapes(
     extraLarge = RoundedCornerShape(22.dp),
 )
 
-/** Corner of album art: nearly square, like a record sleeve. */
-val ArtShape = RoundedCornerShape(4.dp)
+/** The choices from Settings → Customize, for any screen that needs them. */
+val LocalLook = staticCompositionLocalOf { Look() }
+
+private val artShapes = app.navimuse.data.Corners.entries.associateWith { RoundedCornerShape(it.dp.dp) }
+
+/** Corner of album art, as chosen in Customize (nearly square by default, like a record sleeve). */
+val ArtShape: Shape
+    @Composable @ReadOnlyComposable
+    get() = artShapes.getValue(LocalLook.current.corners)
 
 /** Green used for the "protected" safety badges. */
 val SafeGreenLight = Color(0xFF1B7F4B)
@@ -241,13 +291,61 @@ fun themedScheme(base: ColorScheme, roles: Map<String, Long>, dark: Boolean): Co
     )
 }
 
+/** [color] with text on it in black or white, whichever reads better. */
+fun ColorScheme.withAccent(color: Color): ColorScheme =
+    copy(secondary = color, onSecondary = if (color.luminance() > 0.5f) Color.Black else Color.White)
+
+/**
+ * A colour taken from album art, made light enough to read on the dark look or dark enough
+ * on the light one.
+ */
+fun readableAccent(color: Color, dark: Boolean): Color {
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(color.toArgb(), hsl)
+    if (dark) {
+        hsl[1] = hsl[1].coerceAtMost(0.85f)
+        hsl[2] = hsl[2].coerceIn(0.62f, 0.8f)
+    } else {
+        hsl[2] = hsl[2].coerceIn(0.25f, 0.4f)
+    }
+    return Color(ColorUtils.HSLToColor(hsl))
+}
+
+/**
+ * NaviMuse's colours, or an imported theme laid over them, then the accent, font, text size and
+ * corners from Customize. [songAccent] is the playing song's art colour, used when the accent
+ * follows the song.
+ */
 @Composable
-fun AppTheme(dark: Boolean, custom: CustomTheme? = null, content: @Composable () -> Unit) {
-    val base = if (dark) DarkColors else LightColors
-    MaterialTheme(
-        colorScheme = if (custom == null) base else themedScheme(base, custom.roles(dark), dark),
-        typography = AppTypography,
-        shapes = AppShapes,
-        content = content,
-    )
+fun AppTheme(
+    dark: Boolean,
+    custom: CustomTheme? = null,
+    look: Look = Look(),
+    songAccent: Color? = null,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    val base = when {
+        !dark -> LightColors
+        look.darkShade == DarkShade.GREY -> DarkGreyColors
+        else -> DarkColors
+    }
+    val themed = if (custom == null) base else themedScheme(base, custom.roles(dark), dark)
+    val accent: Color? = when {
+        look.accent.isPreset -> Color(if (dark) look.accent.dark else look.accent.light)
+        look.accent == Accent.ALBUM -> songAccent?.let { readableAccent(it, dark) }
+        look.accent == Accent.PHONE && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            (if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)).primary
+        else -> null
+    }
+    val scheme = accent?.let { themed.withAccent(it) } ?: themed
+    val typography = remember(look.font, look.titleFont, look.textSize) { typographyFor(look) }
+    CompositionLocalProvider(LocalLook provides look) {
+        MaterialTheme(
+            colorScheme = scheme,
+            typography = typography,
+            shapes = AppShapes,
+            content = content,
+        )
+    }
 }

@@ -62,6 +62,9 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.navimuse.data.Settings
+import app.navimuse.data.TabChoice
+import app.navimuse.data.TabLabels
+import app.navimuse.ui.screens.CustomizeScreen
 import app.navimuse.net.AlbumListType
 import app.navimuse.net.Song
 import app.navimuse.ui.components.AddToPlaylistDialog
@@ -111,6 +114,15 @@ sealed interface Route {
     data object Downloads : Route
     data object SettingsPage : Route
     data object Safety : Route
+    data object Customize : Route
+}
+
+/** The bottom tab for a choice made in Customize. */
+fun TabChoice.tab(): Tab = when (this) {
+    TabChoice.HOME -> Tab.Home
+    TabChoice.MIXES -> Tab.Mixes
+    TabChoice.SEARCH -> Tab.Search
+    TabChoice.COLLECTION -> Tab.Collection
 }
 
 @Composable
@@ -121,7 +133,12 @@ fun AppRoot(vm: AppViewModel) {
         return
     }
 
-    var tab by rememberSaveable { mutableStateOf(Tab.Home) }
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val look = settings.look
+    val tabs = look.tabs.map { it.tab() }
+    var tab by rememberSaveable { mutableStateOf(look.startTab.tab()) }
+    // A tab hidden in Customize while it's open: go to the first one still shown.
+    LaunchedEffect(tabs) { if (tab !in tabs) tab = tabs.first() }
     val stack = remember { mutableStateListOf<Route>() }
     var showPlayer by remember { mutableStateOf(false) }
     var playlistPickFor by remember { mutableStateOf<List<Song>?>(null) }
@@ -170,6 +187,7 @@ fun AppRoot(vm: AppViewModel) {
                 tab = t
                 stack.clear()
             },
+            openPlayer = { showPlayer = true },
         )
     }
 
@@ -188,13 +206,19 @@ fun AppRoot(vm: AppViewModel) {
                         if (playerState.current != null) {
                             MiniPlayer(vm, onOpen = { showPlayer = true })
                         }
-                        BottomTabs(
-                            selected = tab,
-                            onSelect = { t ->
-                                tab = t
-                                stack.clear()
-                            },
-                        )
+                        if (tabs.size > 1) {
+                            BottomTabs(
+                                tabs = tabs,
+                                labels = look.tabLabels,
+                                selected = tab,
+                                onSelect = { t ->
+                                    tab = t
+                                    stack.clear()
+                                },
+                            )
+                        } else {
+                            Spacer(Modifier.fillMaxWidth().navigationBarsPadding())
+                        }
                     }
                 },
             ) { padding ->
@@ -226,6 +250,7 @@ fun AppRoot(vm: AppViewModel) {
                                 Route.Downloads -> DownloadsScreen(vm, onBack)
                                 Route.SettingsPage -> SettingsScreen(vm, onBack)
                                 Route.Safety -> SafetyScreen(vm, onBack)
+                                Route.Customize -> CustomizeScreen(vm, onBack)
                             }
                         }
                     }
@@ -286,7 +311,7 @@ fun AppRoot(vm: AppViewModel) {
 
 /** Icons with small labels on a plain bar; the current tab is drawn in full strength. */
 @Composable
-private fun BottomTabs(selected: Tab, onSelect: (Tab) -> Unit) {
+private fun BottomTabs(tabs: List<Tab>, labels: TabLabels, selected: Tab, onSelect: (Tab) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -294,7 +319,7 @@ private fun BottomTabs(selected: Tab, onSelect: (Tab) -> Unit) {
             .navigationBarsPadding()
             .height(62.dp),
     ) {
-        Tab.entries.forEach { t ->
+        tabs.forEach { t ->
             val on = t == selected
             val color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
             Column(
@@ -302,15 +327,19 @@ private fun BottomTabs(selected: Tab, onSelect: (Tab) -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
+                val showLabel = labels == TabLabels.ALWAYS || (labels == TabLabels.SELECTED && on)
                 Icon(
                     if (on) t.selectedIcon else t.icon,
-                    null,
+                    // Without a label, the icon says which tab it is.
+                    if (showLabel) null else t.label,
                     tint = color,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(if (showLabel) 24.dp else 27.dp),
                     key = if (on && t.packKeyHasSelected) "${t.packKey}.selected" else t.packKey,
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(t.label, style = MaterialTheme.typography.labelSmall, color = color)
+                if (showLabel) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(t.label, style = MaterialTheme.typography.labelSmall, color = color)
+                }
             }
         }
     }

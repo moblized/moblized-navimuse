@@ -77,7 +77,9 @@ import app.navimuse.ui.components.rememberArtColor
 import app.navimuse.ui.components.rememberLoad
 import app.navimuse.ui.components.stageColor
 import app.navimuse.ui.friendly
+import app.navimuse.data.HomeSection
 import app.navimuse.ui.theme.ArtShape
+import app.navimuse.ui.theme.LocalLook
 import app.navimuse.update.Updater
 import app.navimuse.ui.components.ArtistBubble
 import app.navimuse.ui.components.PlaylistCard
@@ -104,6 +106,7 @@ fun HomeScreen(vm: AppViewModel) {
     val info by vm.serverInfo.collectAsState()
     val update by vm.updateStatus.collectAsState()
     val appStyle by vm.appStyle.collectAsState()
+    val settings by vm.settings.collectAsState()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             PageHeader("Home") {
@@ -143,32 +146,49 @@ fun HomeScreen(vm: AppViewModel) {
                 if (index == 0) item(key = "style-mixes") { MixesForYou(vm) }
             }
         } else {
-            item {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    ActionPill("Shuffle all", Icons.Filled.Shuffle, primary = true) { vm.shuffleAll() }
-                    ActionPill("Surprise mix", Icons.Filled.AutoAwesome) { vm.surpriseMix() }
-                }
+            // The sections picked in Settings → Customize, in their order.
+            settings.look.home.forEach { section ->
+                item(key = "home-${section.name}") { HomeSectionView(vm, section) }
             }
-            item { AlbumShelf(vm, "Recently played", AlbumListType.RECENT, hideWhenEmpty = true) }
-            item { MixesForYou(vm) }
-            item { AlbumShelf(vm, "Recently added", AlbumListType.NEWEST) }
-            item { AlbumShelf(vm, "Most played", AlbumListType.FREQUENT, hideWhenEmpty = true) }
-            item { AlbumShelf(vm, "Discover", AlbumListType.RANDOM) }
+            if (settings.look.home.isEmpty()) {
+                item { EmptyBox("Home is empty. Pick what to show in Settings → Customize.") }
+            }
         }
     }
 }
 
-/** One home section from a Symfonium application style. */
 @Composable
-private fun StyleRow(vm: AppViewModel, style: AppStyle, row: HomeRow) {
+private fun HomeSectionView(vm: AppViewModel, section: HomeSection) {
+    fun row(source: HomeSource) = HomeRow(source, title = null, showHeader = true, count = 20, gridRows = 1, gridColumns = 3)
+    when (section) {
+        HomeSection.SHORTCUTS -> Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            ActionPill("Shuffle all", Icons.Filled.Shuffle, primary = true) { vm.shuffleAll() }
+            ActionPill("Surprise mix", Icons.Filled.AutoAwesome) { vm.surpriseMix() }
+        }
+        HomeSection.MIXES -> MixesForYou(vm)
+        HomeSection.RECENTLY_PLAYED -> StyleRow(vm, null, row(HomeSource.RECENTLY_PLAYED))
+        HomeSection.RECENTLY_ADDED -> StyleRow(vm, null, row(HomeSource.RECENTLY_ADDED))
+        HomeSection.MOST_PLAYED -> StyleRow(vm, null, row(HomeSource.MOST_PLAYED))
+        HomeSection.DISCOVER -> StyleRow(vm, null, row(HomeSource.RANDOM_ALBUMS))
+        HomeSection.RANDOM_SONGS -> StyleRow(vm, null, row(HomeSource.RANDOM_SONGS))
+        HomeSection.FAVOURITE_SONGS -> StyleRow(vm, null, row(HomeSource.FAVOURITE_SONGS))
+        HomeSection.FAVOURITE_ALBUMS -> StyleRow(vm, null, row(HomeSource.FAVOURITE_ALBUMS))
+        HomeSection.FAVOURITE_ARTISTS -> StyleRow(vm, null, row(HomeSource.FAVOURITE_ARTISTS))
+        HomeSection.PLAYLISTS -> StyleRow(vm, null, row(HomeSource.PLAYLISTS))
+    }
+}
+
+/** One home section, from a Symfonium application style ([style]) or Customize. */
+@Composable
+private fun StyleRow(vm: AppViewModel, style: AppStyle?, row: HomeRow) {
     val ui = LocalUi.current
     val title = (row.title ?: row.source.defaultTitle).takeIf { row.showHeader && it.isNotBlank() }
     when (row.source) {
         HomeSource.SHORTCUTS -> {
-            val set = style.shortcuts.getOrNull(row.title?.toIntOrNull() ?: 0).orEmpty()
+            val set = style?.shortcuts?.getOrNull(row.title?.toIntOrNull() ?: 0).orEmpty()
             ShortcutRow(vm, set)
         }
         HomeSource.RECENTLY_PLAYED -> StyleAlbums(vm, title, row, AlbumListType.RECENT) { vm.api().albumList(AlbumListType.RECENT, row.count) }
@@ -211,7 +231,7 @@ private fun StyleAlbums(vm: AppViewModel, title: String?, row: HomeRow, type: Al
     if (s is Load.Ok && s.value.isEmpty()) return
     title?.let { SectionHeader(it, action = "View all") { ui.navigate(Route.AlbumGrid(type)) } }
     when (s) {
-        is Load.Loading -> ShelfPlaceholder(156)
+        is Load.Loading -> ShelfPlaceholder(LocalLook.current.cardSize.dp)
         is Load.Failed -> ErrorBox(s.message, loaded.retry)
         is Load.Ok -> if (row.gridRows > 1) {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -295,7 +315,7 @@ private fun MixesForYou(vm: AppViewModel) {
     }
     SectionHeader("Your Instant Mixes")
     when (val s = loaded.state) {
-        is Load.Loading -> ShelfPlaceholder(172)
+        is Load.Loading -> ShelfPlaceholder(LocalLook.current.cardSize.dp + 16)
         is Load.Failed -> ErrorBox(s.message, loaded.retry)
         is Load.Ok -> if (s.value.isEmpty()) {
             EmptyBox("Play some music and mixes will show up here.")
@@ -312,7 +332,7 @@ private fun MixesForYou(vm: AppViewModel) {
 private fun MixCard(album: Album, onClick: () -> Unit) {
     val art = rememberArtColor(album.coverArt, album.name)
     val wash = stageColor(art, dark = true)
-    val size = 172.dp
+    val size = (LocalLook.current.cardSize.dp + 16).dp
     Column(Modifier.width(size).clickable(onClick = onClick)) {
         Box(Modifier.size(size).clip(ArtShape)) {
             Cover(album.coverArt, size = size, shape = RectangleShape, placeholder = Icons.Filled.Album, seed = album.name)
@@ -342,26 +362,6 @@ private fun MixCard(album: Album, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-private fun AlbumShelf(vm: AppViewModel, title: String, type: AlbumListType, hideWhenEmpty: Boolean = false) {
-    val ui = LocalUi.current
-    val loaded = rememberLoad(type) { vm.api().albumList(type, 20) }
-    val s = loaded.state
-    if (hideWhenEmpty && s is Load.Ok && s.value.isEmpty()) return
-    SectionHeader(title, action = "View all") { ui.navigate(Route.AlbumGrid(type)) }
-    when (s) {
-        is Load.Loading -> ShelfPlaceholder(156)
-        is Load.Failed -> ErrorBox(s.message, loaded.retry)
-        is Load.Ok -> if (s.value.isEmpty()) {
-            EmptyBox("Nothing here yet.")
-        } else {
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(s.value, key = { it.id }) { album -> AlbumCard(album) { ui.navigate(Route.AlbumPage(album.id)) } }
-            }
-        }
     }
 }
 
@@ -407,9 +407,9 @@ fun AlbumGrid(
     header: (@Composable () -> Unit)? = null,
 ) {
     val vm = LocalUi.current.vm
-    // A Symfonium app style can fix the number of columns.
+    // A Symfonium app style can fix the number of columns, or Customize can.
     val appStyle by vm.appStyle.collectAsState()
-    val fixedColumns = appStyle?.gridColumns
+    val fixedColumns = appStyle?.gridColumns ?: LocalLook.current.gridColumns.takeIf { it > 0 }
     val albums = remember(key) { mutableStateListOf<Album>() }
     var loading by remember(key) { mutableStateOf(false) }
     var done by remember(key) { mutableStateOf(false) }

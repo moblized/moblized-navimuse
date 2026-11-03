@@ -7,6 +7,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.navimuse.BlockedEvent
 import app.navimuse.NaviMuseApp
+import app.navimuse.data.Accent
+import app.navimuse.data.Look
 import app.navimuse.data.Settings
 import app.navimuse.downloads.Downloads
 import app.navimuse.net.Album
@@ -366,7 +368,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun useTheme(id: String?) = updateSettings { it.copy(themeId = id) }
+    /** Picking a colour theme brings its own accent back too. */
+    fun useTheme(id: String?) = updateSettings { it.copy(themeId = id, look = it.look.copy(accent = Accent.THEME)) }
+
+    /** Changes something in Settings → Customize. */
+    fun updateLook(change: (Look) -> Look) = updateSettings { it.copy(look = change(it.look).sanitized()) }
 
     /** A Symfonium icon pack ("<package>/<pack id>"), or null for NaviMuse's own icons. */
     fun useIconPack(id: String?) = updateSettings { it.copy(iconPack = id) }

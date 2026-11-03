@@ -19,7 +19,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.navimuse.data.Accent
 import app.navimuse.ui.AppRoot
+import app.navimuse.ui.components.rememberArtColorOf
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.isDark
 import app.navimuse.ui.icons.IconPacks
@@ -67,7 +71,21 @@ class MainActivity : ComponentActivity() {
             val iconPack = remember(settings.iconPack, iconPackRefresh) {
                 settings.iconPack?.let { IconPacks.load(this@MainActivity, it) }
             }
-            AppTheme(dark = dark, custom = themes.firstOrNull { it.id == settings.themeId }) {
+            // When the accent follows the song, the theme needs the playing song's art.
+            val playingArt by remember {
+                vm.playerState.map { st -> st.current?.song?.let { it.coverArt to it.album.ifBlank { it.title } } }.distinctUntilChanged()
+            }.collectAsStateWithLifecycle(null)
+            val songAccent = if (settings.look.accent == Accent.ALBUM) {
+                playingArt?.let { (art, seed) -> rememberArtColorOf(remember(art) { vm.coverUrl(art, 160) }, seed) }
+            } else {
+                null
+            }
+            AppTheme(
+                dark = dark,
+                custom = themes.firstOrNull { it.id == settings.themeId },
+                look = settings.look,
+                songAccent = songAccent,
+            ) {
                 CompositionLocalProvider(LocalIconPack provides iconPack) {
                     AppRoot(vm)
                 }

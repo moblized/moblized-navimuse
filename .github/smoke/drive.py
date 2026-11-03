@@ -100,9 +100,9 @@ def type_text(s):
     time.sleep(0.8)
 
 
-def scroll_to(text, swipes=8):
+def scroll_to(text=None, swipes=8, desc=None):
     for _ in range(swipes):
-        n = find(text)
+        n = find(text, desc=desc)
         if n is not None:
             return n
         adb("shell", "input", "swipe", "540", "1700", "540", "700", "400")
@@ -337,6 +337,44 @@ def downloads():
     shot("21-downloads")
 
 
+def open_customize():
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Home")
+    tap(desc="Settings")
+    tap_node(scroll_to("Customize"))
+    wait_for(text="Accent colour")
+
+
+def customize():
+    open_customize()
+    shot("22a-customize")
+    tap(desc="Pink")
+    # Home: switch on Random songs.
+    tap_node(scroll_to("Random songs", swipes=20))
+    # Playing screen: a spinning record, a round play button, no share button.
+    tap_node(scroll_to("Album art", swipes=10))
+    tap(text="Spinning record")
+    tap_node(scroll_to("Circle", swipes=6))
+    tap_node(scroll_to("Share button", swipes=8))
+    tap_node(scroll_to("Open the playing screen", swipes=8))
+    wait_for(text="Playing from")
+    time.sleep(3)
+    assert find(desc="Share") is None, "the share button is still on the playing screen"
+    assert find(desc="Pause") is not None or find(desc="Play") is not None, "no play button"
+    shot("22b-playing-customized")
+    back()  # closes the playing screen
+    # Mini player: floating.
+    tap_node(scroll_to("Floating", swipes=6))
+    time.sleep(1)
+    shot("22c-customize-mini")
+    back()  # Settings
+    back()  # Home
+    scroll_to("Random songs", swipes=10)
+    time.sleep(2)
+    shot("22d-home-customized")
+
+
 NIGHT_DRIVE = {
     "name": "Night Drive", "id": "", "imported": True,
     "schemes": {
@@ -362,9 +400,8 @@ def symfonium_theme():
         time.sleep(2)
         adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
         time.sleep(2)
-        tap(text="Home")
-        tap(desc="Settings")
-        tap_node(scroll_to("Import link"))
+        open_customize()
+        tap_node(scroll_to("Import link", swipes=12))
         wait_for(text="Import from a link")
         tap(text="styles.symfonium.app/styles", contains=True)
         type_text("http://10.0.2.2:8088/night-drive.json")
@@ -373,6 +410,8 @@ def symfonium_theme():
         time.sleep(2)
         shot("23-theme-imported")
         back()
+        back()
+        tap(text="Home")
         time.sleep(2)
         shot("24-home-night-drive")
     finally:
@@ -412,15 +451,17 @@ APP_STYLE = {
 
 
 def import_link(url):
-    # Collection's gear: Home may be scrolled down (an app style's sections), hiding its own.
-    tap(text="Collection")
-    tap(desc="Settings")
-    tap_node(scroll_to("Import link"))
+    """Imports a style from a link in Settings → Customize, then goes back to Home."""
+    open_customize()
+    tap_node(scroll_to("Import link", swipes=12))
     wait_for(text="Import from a link")
     tap(text="styles.symfonium.app/styles", contains=True)
     type_text(url)
     tap(text="Import")
     time.sleep(3)
+    back()
+    back()
+    tap(text="Home")
 
 
 def symfonium_styles():
@@ -433,13 +474,11 @@ def symfonium_styles():
     try:
         time.sleep(2)
         import_link("http://10.0.2.2:8088/smoke-app.json")
-        back()
         time.sleep(3)
         scroll_to("Fresh in")
         time.sleep(2)
         shot("25-home-app-style")
         import_link("http://10.0.2.2:8088/smoke-combo.json")
-        back()
         wait_for(text="Mini ", contains=True, timeout=20)
         shot("26-mini-player-style")
         tap(text="Mini ", contains=True)
@@ -472,6 +511,7 @@ for name, fn in [
     ("Dolby badge on a Dolby album", dolby_album),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
+    ("customize look and layout", customize),
     ("import a Symfonium colour theme", symfonium_theme),
     ("import Symfonium app and now-playing styles", symfonium_styles),
     ("background playback", background_playback),

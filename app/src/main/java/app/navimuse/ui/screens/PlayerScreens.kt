@@ -43,7 +43,16 @@ import app.navimuse.ui.symfonium.NowPlayingStyle
 import app.navimuse.ui.symfonium.NpElement
 import app.navimuse.ui.symfonium.StyledLine
 import app.navimuse.ui.symfonium.songFields
+import app.navimuse.data.Look
+import app.navimuse.data.MiniStyle
+import app.navimuse.data.PlayButtonStyle
+import app.navimuse.data.PlayerArt
+import app.navimuse.data.PlayerBackground
+import app.navimuse.data.TitleAlign
 import app.navimuse.ui.theme.ArtShape
+import app.navimuse.ui.theme.LocalLook
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -167,15 +176,22 @@ fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
     val pos = rememberPosition(vm, state.isPlaying)
     val progress = if (state.durationMs > 0) (pos.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
     val st = style
-    val floating = st?.miniFloating == true
-    val shape = if (floating) RoundedCornerShape(percent = st!!.miniCornerPercent.coerceAtLeast(8)) else RectangleShape
+    val look = LocalLook.current
+    // A Symfonium style's floating player, or the one picked in Customize.
+    val styleFloats = st?.miniFloating == true
+    val floating = styleFloats || look.miniStyle == MiniStyle.FLOATING
+    val corner = if (styleFloats) st!!.miniCornerPercent.coerceAtLeast(8) else 22
+    val shape = if (floating) RoundedCornerShape(percent = corner) else RectangleShape
+    val marginH = if (styleFloats) st!!.miniMarginH else 0
+    val marginBottom = if (styleFloats) st!!.miniMarginBottom else 0
+    val swipe = look.miniSwipe && st?.swipeToSkip != false
     val fields = songFields(song, state, pos, null)
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = shape,
         shadowElevation = if (floating) 6.dp else 0.dp,
         modifier = if (floating) {
-            Modifier.padding(start = (st!!.miniMarginH + 8).dp, end = (st.miniMarginH + 8).dp, bottom = (st.miniMarginBottom + 6).dp)
+            Modifier.padding(start = (marginH + 8).dp, end = (marginH + 8).dp, bottom = (marginBottom + 6).dp)
         } else {
             Modifier
         },
@@ -188,7 +204,7 @@ fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
                 // Swipe the song left or right to skip, like on the playing screen.
                 Row(
                     Modifier.weight(1f).let {
-                        if (st?.swipeToSkip == false) it else it.swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() })
+                        if (!swipe) it else it.swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() })
                     },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -196,7 +212,7 @@ fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
                         song.coverArt,
                         size = 44.dp,
                         seed = song.album.ifBlank { song.title },
-                        shape = st?.let { RoundedCornerShape(percent = it.miniThumbCornerPercent) } ?: ArtShape,
+                        shape = st?.takeIf { styleFloats }?.let { RoundedCornerShape(percent = it.miniThumbCornerPercent) } ?: ArtShape,
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
@@ -214,16 +230,23 @@ fun MiniPlayer(vm: AppViewModel, onOpen: () -> Unit) {
                         }
                     }
                 }
+                if (look.miniPrevious) {
+                    IconButton(onClick = { vm.player.previous() }) { Icon(Icons.Filled.SkipPrevious, "Previous") }
+                }
                 Box(contentAlignment = Alignment.Center) {
                     IconButton(onClick = { vm.player.togglePlay() }) {
                         Icon(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (state.isPlaying) "Pause" else "Play")
                     }
                     if (state.buffering) CircularProgressIndicator(Modifier.size(38.dp), strokeWidth = 2.dp)
                 }
-                IconButton(onClick = { vm.player.next() }, enabled = state.hasNext) { Icon(Icons.Filled.SkipNext, "Next") }
+                if (look.miniNext) {
+                    IconButton(onClick = { vm.player.next() }, enabled = state.hasNext) { Icon(Icons.Filled.SkipNext, "Next") }
+                }
             }
-            Box(Modifier.fillMaxWidth().height(2.dp).background(MaterialTheme.colorScheme.outlineVariant)) {
-                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(MaterialTheme.colorScheme.onSurface))
+            if (look.miniProgress) {
+                Box(Modifier.fillMaxWidth().height(2.dp).background(MaterialTheme.colorScheme.outlineVariant)) {
+                    Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(MaterialTheme.colorScheme.onSurface))
+                }
             }
         }
     }
@@ -260,6 +283,13 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
     val dragDown = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val closeAt = with(LocalDensity.current) { 140.dp.toPx() }
+    val look = LocalLook.current
+    // Keep the screen on while this is open, if asked to in Customize.
+    val view = LocalView.current
+    DisposableEffect(look.keepScreenOn) {
+        view.keepScreenOn = look.keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
 
     Surface(
         Modifier
@@ -286,37 +316,54 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
             },
         color = scheme.background,
     ) {
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to stage, 0.85f to scheme.background))) {
-            if (st != null && st.backgroundBlur > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // A style's blurred-artwork background.
+        // Background: the song's colour fading down (NaviMuse's own), blurred art, or plain.
+        val blur = st?.backgroundBlur?.takeIf { it > 0 } ?: if (look.playerBackground == PlayerBackground.BLUR) 90 else 0
+        val plain = blur == 0 && look.playerBackground == PlayerBackground.PLAIN
+        Box(
+            Modifier.fillMaxSize().background(
+                if (plain) Brush.verticalGradient(listOf(scheme.background, scheme.background))
+                else Brush.verticalGradient(0f to stage, 0.85f to scheme.background),
+            ),
+        ) {
+            if (blur > 0) {
+                val canBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                 CoverFill(
                     song.coverArt,
-                    Modifier.fillMaxSize().blur((st.backgroundBlur / 2).coerceIn(8, 60).dp),
+                    Modifier.fillMaxSize().let { if (canBlur) it.blur((blur / 2).coerceIn(8, 60).dp) else it },
                     shape = RectangleShape,
                     seed = song.album.ifBlank { song.title },
                 )
-                Box(Modifier.fillMaxSize().background(scheme.background.copy(alpha = 0.55f)))
+                // Older phones can't blur, so the art is dimmed more instead.
+                Box(Modifier.fillMaxSize().background(scheme.background.copy(alpha = if (canBlur) 0.55f else 0.8f)))
             }
             Column(
                 Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
             ) {
                 // Top: the artist's picture (tap for the artist), a style's top text, and where it's playing.
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Cover(
-                        song.artistId?.let { "ar-$it" } ?: song.coverArt,
-                        size = 44.dp,
-                        shape = CircleShape,
-                        placeholder = Icons.Filled.Person,
-                        seed = song.artist,
-                        modifier = Modifier.clip(CircleShape).clickable(enabled = song.artistId != null) {
-                            song.artistId?.let { ui.navigate(Route.ArtistPage(it)) }
-                        },
-                    )
+                    if (look.showArtistPhoto) {
+                        Cover(
+                            song.artistId?.let { "ar-$it" } ?: song.coverArt,
+                            size = 44.dp,
+                            shape = CircleShape,
+                            placeholder = Icons.Filled.Person,
+                            seed = song.artist,
+                            modifier = Modifier.clip(CircleShape).clickable(enabled = song.artistId != null) {
+                                song.artistId?.let { ui.navigate(Route.ArtistPage(it)) }
+                            },
+                        )
+                    } else {
+                        RoundButton(Icons.Filled.KeyboardArrowDown, "Close") { onClose() }
+                    }
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         st?.topTitle?.let { StyledLine(it.copy(maxLines = 1), fields, MaterialTheme.typography.titleSmall) }
                         st?.topSubtitle?.let { StyledLine(it.copy(maxLines = 1), fields, MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant) }
                     }
-                    RoundButton(Icons.Filled.Speaker, "Play on another device") { openOutputSwitcher(context) }
+                    if (look.showOutputButton) {
+                        RoundButton(Icons.Filled.Speaker, "Play on another device") { openOutputSwitcher(context) }
+                    } else {
+                        Spacer(Modifier.size(52.dp))
+                    }
                 }
 
                 if (showLyrics) {
@@ -325,17 +372,20 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                     Spacer(Modifier.height(16.dp))
                 } else {
                     Spacer(Modifier.weight(0.5f))
-                    NowPlayingArt(vm, song, state.isPlaying, st)
+                    NowPlayingArt(vm, song, state.isPlaying, st, look)
                     Spacer(Modifier.weight(0.5f))
                 }
 
                 val elements = st?.elements
+                // A style's seek bar size wins when it sets one; Customize's otherwise.
+                val seekScale = st?.sliderScale?.takeIf { it != 1f } ?: look.seekBar.scale
+                val showTimes = (st?.sliderTimes ?: true) && look.showTimes
                 if (elements == null) {
-                    TitleBlock(vm, song, starred)
+                    TitleBlock(vm, song, starred, look.titleAlign)
                     Spacer(Modifier.height(18.dp))
-                    SeekBar(vm, state, pos, scale = st?.sliderScale ?: 1f, showTimes = st?.sliderTimes ?: true, song = song, kbps = kbps)
+                    SeekBar(vm, state, pos, scale = seekScale, showTimes = showTimes, song = song, kbps = kbps)
                     Spacer(Modifier.height(14.dp))
-                    ControlButtons(vm, state)
+                    ControlButtons(vm, state, look)
                 } else {
                     // A Symfonium style's text lines, seek bar and buttons, in its order.
                     elements.forEach { el ->
@@ -348,10 +398,10 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                                     song.albumId?.let { ui.navigate(Route.AlbumPage(it)) }
                                 },
                             )
-                            NpElement.Slider -> SeekBar(vm, state, pos, scale = st.sliderScale, showTimes = st.sliderTimes, song = song, kbps = kbps)
+                            NpElement.Slider -> SeekBar(vm, state, pos, scale = seekScale, showTimes = showTimes, song = song, kbps = kbps)
                             NpElement.Buttons -> {
                                 Spacer(Modifier.height(6.dp))
-                                ControlButtons(vm, state)
+                                ControlButtons(vm, state, look)
                                 Spacer(Modifier.height(6.dp))
                             }
                         }
@@ -363,7 +413,7 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RoundButton(Icons.Filled.Menu, "Queue") { showQueue = true }
                     val from = source ?: song.albumId?.let { AppViewModel.PlaySource(song.album, Route.AlbumPage(it)) }
-                    Column(
+                    if (!look.showPlayingFrom) Spacer(Modifier.weight(1f)) else Column(
                         Modifier
                             .weight(1f)
                             .padding(horizontal = 16.dp)
@@ -374,8 +424,10 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                         Text("Playing from", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                         Text(from?.name ?: song.album, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    RoundButton(Icons.Filled.Share, "Share") { shareSong(context, song) }
-                    Spacer(Modifier.width(10.dp))
+                    if (look.showShare) {
+                        RoundButton(Icons.Filled.Share, "Share") { shareSong(context, song) }
+                        Spacer(Modifier.width(10.dp))
+                    }
                     Box {
                         RoundButton(Icons.Filled.MoreHoriz, "More") { menu = true }
                         SongMenu(
@@ -447,51 +499,76 @@ private fun openOutputSwitcher(context: Context) {
     }
 }
 
-/** The cover art: swipe for the next or previous song; a style can round, inset, uncrop or spin it. */
+/**
+ * The cover art: swipe for the next or previous song. Its shape and size come from Customize,
+ * or from a Symfonium style that sets them (rounded, inset, uncropped or spinning).
+ */
 @Composable
-private fun ColumnScope.NowPlayingArt(vm: AppViewModel, song: Song, playing: Boolean, st: NowPlayingStyle?) {
+private fun ColumnScope.NowPlayingArt(vm: AppViewModel, song: Song, playing: Boolean, st: NowPlayingStyle?, look: Look) {
+    val record = st?.coverRotates == true || (st?.coverCornerPercent == null && look.playerArt == PlayerArt.RECORD)
     val rotation = remember { Animatable(0f) }
-    LaunchedEffect(playing, st?.coverRotates) {
-        if (playing && st?.coverRotates == true) {
+    LaunchedEffect(playing, record) {
+        if (playing && record) {
             while (true) {
                 rotation.animateTo(rotation.value + 360f, tween(12_000, easing = LinearEasing))
             }
         }
     }
     val shape = when {
-        st?.coverRotates == true -> CircleShape
+        record -> CircleShape
         st?.coverCornerPercent != null -> RoundedCornerShape(percent = st.coverCornerPercent)
-        else -> RoundedCornerShape(6.dp)
+        look.playerArt == PlayerArt.CIRCLE -> CircleShape
+        else -> RoundedCornerShape(look.playerArt.cornerDp.dp)
     }
-    CoverFill(
-        song.coverArt,
+    Box(
         Modifier
             .align(Alignment.CenterHorizontally)
-            .padding(horizontal = (st?.coverMarginH ?: 0).dp)
+            .padding(horizontal = (st?.coverMarginH ?: look.artSize.marginDp).dp)
             .fillMaxWidth()
             .widthIn(max = 440.dp)
             .aspectRatio(1f)
-            .swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() })
-            .graphicsLayer { rotationZ = if (st?.coverRotates == true) rotation.value else 0f },
-        shape = shape,
-        seed = song.album.ifBlank { song.title },
-        fit = st?.coverNoCrop == true && st.coverRotates.not(),
-    )
+            .let { if (look.swipeArt) it.swipeToSkip(onNext = { vm.player.next() }, onPrevious = { vm.player.previous() }) else it }
+            .graphicsLayer { rotationZ = if (record) rotation.value else 0f },
+        contentAlignment = Alignment.Center,
+    ) {
+        CoverFill(
+            song.coverArt,
+            Modifier.fillMaxSize(),
+            shape = shape,
+            seed = song.album.ifBlank { song.title },
+            fit = st?.coverNoCrop == true && !record,
+        )
+        if (record) {
+            // A label ring and the spindle hole, so it reads as a record.
+            Box(Modifier.fillMaxSize(0.34f).border(2.dp, Color.Black.copy(alpha = 0.28f), CircleShape))
+            Box(Modifier.size(16.dp).background(MaterialTheme.colorScheme.background, CircleShape))
+        }
+    }
 }
 
-/** Title (tap for the album) with an E for explicit, artist (tap for them), and a round favourite button. */
+/**
+ * Title (tap for the album) with an E for explicit, artist (tap for them), and a round favourite
+ * button. Left-aligned like Tidal, or centred.
+ */
 @Composable
-private fun TitleBlock(vm: AppViewModel, song: Song, starred: Boolean) {
+private fun TitleBlock(vm: AppViewModel, song: Song, starred: Boolean, align: TitleAlign) {
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
+    val centred = align == TitleAlign.CENTER
+    val big = MaterialTheme.typography.headlineSmall
+    val artistStyle = MaterialTheme.typography.titleMedium
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+        // Balances the favourite button so the text sits in the middle.
+        if (centred) Spacer(Modifier.width(52.dp))
+        Column(Modifier.weight(1f), horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     song.title,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 26.sp, lineHeight = 30.sp),
+                    // Bigger than the headline style, and growing with the text size chosen in Customize.
+                    style = big.copy(fontSize = big.fontSize * (26f / 22f), lineHeight = big.lineHeight * (30f / 28f)),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                    textAlign = if (centred) TextAlign.Center else TextAlign.Start,
                     modifier = Modifier.weight(1f, fill = false).clickable(enabled = song.albumId != null) {
                         song.albumId?.let { ui.navigate(Route.AlbumPage(it)) }
                     },
@@ -509,10 +586,11 @@ private fun TitleBlock(vm: AppViewModel, song: Song, starred: Boolean) {
             Spacer(Modifier.height(4.dp))
             Text(
                 song.artist,
-                style = MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp),
+                style = artistStyle.copy(fontSize = artistStyle.fontSize * (19f / 16f)),
                 color = scheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                textAlign = if (centred) TextAlign.Center else TextAlign.Start,
                 modifier = Modifier.clickable(enabled = song.artistId != null) {
                     song.artistId?.let { ui.navigate(Route.ArtistPage(it)) }
                 },
@@ -620,62 +698,81 @@ private fun SeekBar(vm: AppViewModel, state: PlayerUiState, pos: Long, scale: Fl
 }
 
 @Composable
-private fun ControlButtons(vm: AppViewModel, state: PlayerUiState) {
+private fun ControlButtons(vm: AppViewModel, state: PlayerUiState, look: Look) {
     val scheme = MaterialTheme.colorScheme
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = if (look.showShuffleRepeat) Arrangement.SpaceBetween else Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(if (state.shuffle) scheme.onSurface.copy(alpha = 0.14f) else Color.Transparent)
-                .clickable { vm.player.setShuffle(!state.shuffle) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Filled.Shuffle,
-                if (state.shuffle) "Shuffle on" else "Shuffle",
-                tint = if (state.shuffle) scheme.onSurface else scheme.onSurfaceVariant,
-                key = if (state.shuffle) "playback.shuffle.on" else "playback.shuffle",
-            )
+        if (look.showShuffleRepeat) {
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (state.shuffle) scheme.onSurface.copy(alpha = 0.14f) else Color.Transparent)
+                    .clickable { vm.player.setShuffle(!state.shuffle) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Shuffle,
+                    if (state.shuffle) "Shuffle on" else "Shuffle",
+                    tint = if (state.shuffle) scheme.onSurface else scheme.onSurfaceVariant,
+                    key = if (state.shuffle) "playback.shuffle.on" else "playback.shuffle",
+                )
+            }
         }
         IconButton(onClick = { vm.player.previous() }, modifier = Modifier.size(64.dp)) {
             Icon(Icons.Filled.SkipPrevious, "Previous", modifier = Modifier.size(44.dp))
         }
         Box(contentAlignment = Alignment.Center) {
-            IconButton(onClick = { vm.player.togglePlay() }, modifier = Modifier.size(88.dp)) {
-                Icon(
-                    if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    if (state.isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(72.dp),
-                )
+            if (look.playButton == PlayButtonStyle.CIRCLE) {
+                // A solid round button, the icon cut out of it.
+                Box(
+                    Modifier.size(78.dp).clip(CircleShape).background(scheme.onSurface).clickable { vm.player.togglePlay() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        if (state.isPlaying) "Pause" else "Play",
+                        tint = scheme.background,
+                        modifier = Modifier.size(46.dp),
+                    )
+                }
+            } else {
+                IconButton(onClick = { vm.player.togglePlay() }, modifier = Modifier.size(88.dp)) {
+                    Icon(
+                        if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        if (state.isPlaying) "Pause" else "Play",
+                        modifier = Modifier.size(72.dp),
+                    )
+                }
             }
             if (state.buffering) CircularProgressIndicator(Modifier.size(84.dp), strokeWidth = 2.dp, color = scheme.accent)
         }
         IconButton(onClick = { vm.player.next() }, enabled = state.hasNext, modifier = Modifier.size(64.dp)) {
             Icon(Icons.Filled.SkipNext, "Next", modifier = Modifier.size(44.dp))
         }
-        Box(
-            Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(if (state.repeatMode != Player.REPEAT_MODE_OFF) scheme.onSurface.copy(alpha = 0.14f) else Color.Transparent)
-                .clickable { vm.player.cycleRepeat() },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
-                "Repeat",
-                tint = if (state.repeatMode != Player.REPEAT_MODE_OFF) scheme.onSurface else scheme.onSurfaceVariant,
-                key = when (state.repeatMode) {
-                    Player.REPEAT_MODE_ONE -> "playback.repeat.one.on"
-                    Player.REPEAT_MODE_ALL -> "playback.repeat.on"
-                    else -> "playback.repeat"
-                },
-            )
+        if (look.showShuffleRepeat) {
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (state.repeatMode != Player.REPEAT_MODE_OFF) scheme.onSurface.copy(alpha = 0.14f) else Color.Transparent)
+                    .clickable { vm.player.cycleRepeat() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                    "Repeat",
+                    tint = if (state.repeatMode != Player.REPEAT_MODE_OFF) scheme.onSurface else scheme.onSurfaceVariant,
+                    key = when (state.repeatMode) {
+                        Player.REPEAT_MODE_ONE -> "playback.repeat.one.on"
+                        Player.REPEAT_MODE_ALL -> "playback.repeat.on"
+                        else -> "playback.repeat"
+                    },
+                )
+            }
         }
     }
 }

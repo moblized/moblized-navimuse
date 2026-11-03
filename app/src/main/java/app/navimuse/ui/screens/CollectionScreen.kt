@@ -84,6 +84,8 @@ fun CollectionScreen(vm: AppViewModel) {
     val ui = LocalUi.current
     val recent = rememberLoad("collection-recent") { vm.api().albumList(AlbumListType.RECENT, 12) }
     val appStyle by vm.appStyle.collectAsState()
+    val settings by vm.settings.collectAsState()
+    val look = settings.look
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             PageHeader("Collection") {
@@ -91,15 +93,18 @@ fun CollectionScreen(vm: AppViewModel) {
             }
         }
         item { Spacer(Modifier.size(8.dp)) }
-        // A Symfonium app style's library menu order; NaviMuse's own otherwise.
+        // A Symfonium app style's library menu order; otherwise the entries picked in Customize.
         val styled = appStyle?.library.orEmpty().filter { it in menuEntries }
-        val menu = (listOf(Shortcut.MIXES) + styled.ifEmpty { listOf(Shortcut.PLAYLISTS, Shortcut.ALBUMS, Shortcut.ARTISTS) } +
-            listOf(Shortcut.FAVOURITES, Shortcut.DOWNLOADS)).distinct()
+        val menu = if (styled.isNotEmpty()) {
+            (listOf(Shortcut.MIXES) + styled + listOf(Shortcut.FAVOURITES, Shortcut.DOWNLOADS)).distinct()
+        } else {
+            look.collection.map { Shortcut.valueOf(it.name) }
+        }
         menu.forEach { sc ->
             item(key = "menu-$sc") { MenuRow(sc.label, shortcutIcon(sc)) { openShortcut(vm, ui, sc) } }
         }
         val albums = recent.value.orEmpty()
-        if (albums.isNotEmpty()) {
+        if (look.collectionRecent && albums.isNotEmpty()) {
             item { SectionHeader("Recently played") }
             items(albums, key = { "recent-${it.id}" }) { a -> AlbumLine(a) { ui.navigate(Route.AlbumPage(a.id)) } }
         }

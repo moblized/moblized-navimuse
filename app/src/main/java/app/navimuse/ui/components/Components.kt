@@ -107,6 +107,7 @@ import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.Route
 import app.navimuse.ui.formatDuration
 import app.navimuse.ui.theme.ArtShape
+import app.navimuse.ui.theme.LocalLook
 import app.navimuse.ui.theme.accent
 import app.navimuse.ui.theme.warning
 import coil3.SingletonImageLoader
@@ -128,6 +129,8 @@ class UiActions(
     val askNotifications: () -> Unit = {},
     /** Switches to a bottom tab, closing any open page. */
     val selectTab: (app.navimuse.ui.Tab) -> Unit = {},
+    /** Opens the playing screen (when something is playing). */
+    val openPlayer: () -> Unit = {},
 )
 
 val LocalUi = staticCompositionLocalOf<UiActions> { error("UiActions not provided") }
@@ -208,8 +211,14 @@ private val artColorCache = LruCache<String, Int>(300)
 @Composable
 fun rememberArtColor(coverArt: String?, seed: String): Color {
     val vm = LocalUi.current.vm
-    val context = LocalContext.current
     val url = remember(coverArt) { vm.coverUrl(coverArt, 160) }
+    return rememberArtColorOf(url, seed)
+}
+
+/** The same, for a small cover-art link (works outside the app's screens, for the theme). */
+@Composable
+fun rememberArtColorOf(url: String?, seed: String): Color {
+    val context = LocalContext.current
     val fallback = remember(seed) { placeholderColors(seed).first }
     var color by remember(url, seed) { mutableStateOf(url?.let { artColorCache.get(it) }?.let { Color(it) } ?: fallback) }
     LaunchedEffect(url) {
@@ -480,7 +489,7 @@ fun MenuItem(text: String, icon: ImageVector, onClick: () -> Unit) {
 
 /** An album in a sideways shelf. */
 @Composable
-fun AlbumCard(album: Album, modifier: Modifier = Modifier, width: Dp = 156.dp, onClick: () -> Unit) {
+fun AlbumCard(album: Album, modifier: Modifier = Modifier, width: Dp = LocalLook.current.cardSize.dp.dp, onClick: () -> Unit) {
     Column(modifier.width(width).clickable(onClick = onClick)) {
         Cover(album.coverArt, size = width, placeholder = Icons.Filled.Album, seed = album.name)
         Spacer(Modifier.height(8.dp))
@@ -565,7 +574,7 @@ fun PlaylistRow(playlist: Playlist, modifier: Modifier = Modifier, onClick: () -
 
 /** A playlist in a sideways shelf. */
 @Composable
-fun PlaylistCard(playlist: Playlist, modifier: Modifier = Modifier, width: Dp = 156.dp, onClick: () -> Unit) {
+fun PlaylistCard(playlist: Playlist, modifier: Modifier = Modifier, width: Dp = LocalLook.current.cardSize.dp.dp, onClick: () -> Unit) {
     Column(modifier.width(width).clickable(onClick = onClick)) {
         Cover(playlist.coverArt, size = width, placeholder = Icons.AutoMirrored.Filled.QueueMusic, seed = playlist.name)
         Spacer(Modifier.height(8.dp))
