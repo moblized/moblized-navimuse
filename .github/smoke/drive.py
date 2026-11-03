@@ -401,6 +401,10 @@ def settings_and_dark():
         enabled = re.split(r"disabledComponents:|\n\s*\n", pkg.split("enabledComponents:", 1)[1])[0]
     assert "LauncherDark" in enabled, "dark launcher icon wasn't switched on"
     shot("19-launcher")
+    # Pressing Home puts the launcher in keyboard mode, which rings the selected app; a tap ends that.
+    adb("shell", "input", "tap", "540", "1000")
+    time.sleep(2)
+    shot("19b-launcher-touch")
 
 
 def downloads():
