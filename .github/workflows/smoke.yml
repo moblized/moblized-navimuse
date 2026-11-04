@@ -48,6 +48,7 @@ jobs:
             echo "$(date +%T) $(free -m | awk "/Mem:/{print \"used=\" \$3 \" avail=\" \$7}") swap=$(free -m | awk "/Swap:/{print \$3}") load=$(cut -d" " -f1-3 /proc/loadavg) emu_rss_mb=$(( $(ps -o rss= -p "$(pgrep qemu-system | head -1)" 2>/dev/null || echo 0) / 1024 )) disk_avail=$(df -BM --output=avail / | tail -1)"
             sleep 10
           done' > smoke-out/host.txt 2>&1 &
+          echo $! > /tmp/host-monitor.pid
 
       - name: Click through the app on an emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -64,6 +65,8 @@ jobs:
         if: always()
         run: |
           mkdir -p smoke-out
+          # Stop the memory log so the file isn't still growing while it uploads.
+          kill "$(cat /tmp/host-monitor.pid 2>/dev/null)" 2>/dev/null || true
           sudo dmesg -T 2>/dev/null | grep -iE "oom|killed|qemu|segfault|out of memory" | tail -40 > smoke-out/host-dmesg.txt || true
           free -m >> smoke-out/host-dmesg.txt
           ls -laR /tmp/android-runner 2>/dev/null | head -60 > smoke-out/host-crash-files.txt || true
