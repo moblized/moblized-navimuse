@@ -37,6 +37,18 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Free memory for the emulator and watch the machine
+        run: |
+          ./gradlew --stop || true
+          pkill -f KotlinCompileDaemon || true
+          mkdir -p smoke-out
+          free -m | tee smoke-out/host-start.txt
+          # Every 10 seconds: memory, load and the emulator's own memory, so a crash leaves a trail.
+          nohup bash -c 'while true; do
+            echo "$(date +%T) $(free -m | awk "/Mem:/{print \"used=\" \$3 \" avail=\" \$7}") swap=$(free -m | awk "/Swap:/{print \$3}") load=$(cut -d" " -f1-3 /proc/loadavg) emu_rss_mb=$(( $(ps -o rss= -p "$(pgrep qemu-system | head -1)" 2>/dev/null || echo 0) / 1024 )) disk_avail=$(df -BM --output=avail / | tail -1)"
+            sleep 10
+          done' > smoke-out/host.txt 2>&1 &
+
       - name: Click through the app on an emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -47,6 +59,17 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: python3 .github/smoke/drive.py
+
+      - name: Machine clues (memory kills, emulator crash reports)
+        if: always()
+        run: |
+          mkdir -p smoke-out
+          sudo dmesg -T 2>/dev/null | grep -iE "oom|killed|qemu|segfault|out of memory" | tail -40 > smoke-out/host-dmesg.txt || true
+          free -m >> smoke-out/host-dmesg.txt
+          ls -laR /tmp/android-runner 2>/dev/null | head -60 > smoke-out/host-crash-files.txt || true
+          if [ -d /tmp/android-runner ]; then tar czf smoke-out/emu-crash.tgz -C /tmp android-runner 2>/dev/null || true; fi
+          tail -5 smoke-out/host.txt || true
+          cat smoke-out/host-dmesg.txt
 
       - name: Check the server never received a delete
         if: always()

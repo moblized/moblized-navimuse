@@ -648,9 +648,16 @@ private fun ColumnScope.NowPlayingArt(
     val tapSource = remember { MutableInteractionSource() }
     val record = st?.coverRotates == true || (st?.coverCornerPercent == null && look.playerArt == PlayerArt.RECORD)
     val rotation = remember { Animatable(0f) }
-    LaunchedEffect(playing, record) {
-        if (playing && record) {
+    // With "Remove animations" on, a turn would finish at once and the loop would redraw nonstop,
+    // so the record stays still then.
+    val context = LocalContext.current
+    val animationsOn = remember {
+        android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+    }
+    LaunchedEffect(playing, record, animationsOn) {
+        if (playing && record && animationsOn) {
             while (true) {
+                rotation.snapTo(rotation.value % 360f)
                 rotation.animateTo(rotation.value + 360f, tween(12_000, easing = LinearEasing))
             }
         }
