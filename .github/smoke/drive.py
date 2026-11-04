@@ -142,13 +142,16 @@ def step(name, fn):
         results.append(f"FAIL  {name}: {e}")
         print(f"FAIL  {name}: {e}", flush=True)
         slug = re.sub(r'[^a-z0-9]+', '-', name.lower())
-        shot(f"fail-{slug}")
-        # What uiautomator saw, to tell a test problem from an app problem.
-        adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", timeout=40)
-        with open(f"{OUT}/fail-{slug}.xml", "w") as f:
-            f.write(adb("shell", "cat", "/sdcard/ui.xml"))
-        with open(f"{OUT}/fail-{slug}-logcat.txt", "w") as f:
-            f.write(adb("logcat", "-d", "-t", "400"))
+        # Clues for telling a test problem from an app problem; never let them stop the run.
+        try:
+            shot(f"fail-{slug}")
+            adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", timeout=40)
+            with open(f"{OUT}/fail-{slug}.xml", "w") as f:
+                f.write(adb("shell", "cat", "/sdcard/ui.xml", timeout=20))
+            with open(f"{OUT}/fail-{slug}-logcat.txt", "w") as f:
+                f.write(adb("logcat", "-d", "-t", "400", timeout=20))
+        except Exception as clue_error:  # noqa: BLE001
+            print(f"      (couldn't save clues: {clue_error})", flush=True)
         return False
 
 
@@ -408,12 +411,7 @@ def settings_and_dark():
     adb("shell", "input", "tap", "540", "1000")
     time.sleep(2)
     shot("19b-launcher-touch")
-    # Android's own app page draws the icon without the launcher, to tell the two apart.
-    adb("shell", "am", "start", "-a", "android.settings.APPLICATION_DETAILS_SETTINGS", "-d", "package:app.navimuse")
-    time.sleep(4)
-    shot("19c-app-info")
-    adb("shell", "input", "keyevent", "3")
-    time.sleep(2)
+
 
 
 def downloads():
@@ -674,11 +672,16 @@ for name, fn in [
 ]:
     ok = step(name, fn) and ok
 
-with open(f"{OUT}/logcat-crash.txt", "w") as f:
-    f.write(adb("logcat", "-d", "-b", "crash"))
-with open(f"{OUT}/logcat-app.txt", "w") as f:
-    pid = adb("shell", "pidof", "app.navimuse").strip()
-    f.write(adb("logcat", "-d", f"--pid={pid}") if pid else adb("logcat", "-d", "-t", "3000"))
+# The phone's logs, if it still answers.
+for name, args in [("logcat-crash.txt", ("logcat", "-d", "-b", "crash")), ("logcat-app.txt", None)]:
+    try:
+        if args is None:
+            pid = adb("shell", "pidof", "app.navimuse", timeout=20).strip()
+            args = ("logcat", "-d", f"--pid={pid}") if pid else ("logcat", "-d", "-t", "3000")
+        with open(f"{OUT}/{name}", "w") as f:
+            f.write(adb(*args, timeout=60))
+    except Exception as log_error:  # noqa: BLE001
+        print(f"(couldn't save {name}: {log_error})", flush=True)
 with open(f"{OUT}/results.txt", "w") as f:
     f.write("\n".join(results) + "\n")
 print("\n".join(results))
