@@ -15,6 +15,9 @@ AUTH = "u=admin&p=secret123&v=1.16.1&c=smoke&f=json"
 APK = "app/build/outputs/apk/release/app-release.apk"
 os.makedirs(OUT, exist_ok=True)
 results = []
+# Everything the phone logs, written as it happens, so a freeze still leaves a trail.
+live_log = open(f"{OUT}/logcat-live.txt", "w")
+subprocess.Popen(["adb", "logcat", "-v", "threadtime"], stdout=live_log, stderr=subprocess.STDOUT)
 
 
 def adb(*args, check=False, timeout=60):
@@ -506,6 +509,9 @@ def fine_tune():
     wait_for(text="Colours in dark mode")
     shot("22e-fine-tune")
     # Set the dark background to exactly #203040 with the hex box.
+    # What the phone is busy with, every 3 seconds, while the colour picker opens.
+    top_log = open(f"{OUT}/top-colour-picker.txt", "w")
+    subprocess.Popen(["adb", "shell", "top", "-b", "-d", "3", "-n", "20", "-m", "12"], stdout=top_log, stderr=subprocess.STDOUT)
     tap(text="Background")
     time.sleep(2)
     shot("22e2-colour-picker")
@@ -689,10 +695,11 @@ for name, fn in [
     ("download an album for offline play", downloads),
     ("auto cache: played songs kept, then cleared", auto_cache),
     ("customize look and layout", customize),
-    ("fine-tune: exact background colour", fine_tune),
     ("import a Symfonium colour theme", symfonium_theme),
     ("import Symfonium app and now-playing styles", symfonium_styles),
     ("background playback", background_playback),
+    # Last, so if it ever freezes the phone again the other checks have already run.
+    ("fine-tune: exact background colour", fine_tune),
 ]:
     ok = step(name, fn) and ok
 
