@@ -6,8 +6,13 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
-import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.common.C
+import androidx.media3.datasource.cache.Cache
+import androidx.media3.datasource.cache.CacheEvictor
+import androidx.media3.datasource.cache.CacheSpan
 import androidx.media3.datasource.cache.SimpleCache
+import app.navimuse.data.Store
+import java.util.TreeSet
 import app.navimuse.NaviMuseApp
 import app.navimuse.net.Song
 import java.io.File
@@ -30,19 +35,90 @@ object Media3Db {
 }
 
 /**
- * A cache of recently streamed audio, on the phone only, so replays and seeking are smooth.
- * It's the app's own temporary copy; nothing on the server is touched.
+ * A cache of streamed audio, on the phone only, so replays, seeking and offline listening work.
+ * It's the app's own temporary copy, separate from downloads; nothing on the server is touched.
+ * Its size limit can change at any time (Settings → Downloads); the least recently played
+ * songs are removed first.
  */
 @OptIn(UnstableApi::class)
 object AudioCache {
     @Volatile private var cache: SimpleCache? = null
+    private val evictor = AdjustableLruEvictor(2048L * 1024 * 1024)
 
     fun get(context: Context): SimpleCache = cache ?: synchronized(this) {
-        cache ?: SimpleCache(
-            File(context.applicationContext.cacheDir, "audio"),
-            LeastRecentlyUsedCacheEvictor(1024L * 1024 * 1024),
-            Media3Db.get(context),
-        ).also { cache = it }
+        cache ?: run {
+            evictor.maxBytes = limitBytes(Store(context).settings().cacheLimitMb)
+            SimpleCache(File(context.applicationContext.cacheDir, "audio"), evictor, Media3Db.get(context))
+        }.also { cache = it }
+    }
+
+    fun limitBytes(mb: Int): Long = mb.coerceAtLeast(100).toLong() * 1024 * 1024
+
+    /** Applies a new size limit, removing the oldest songs now if the cache is over it. */
+    fun setLimit(context: Context, mb: Int) {
+        val bytes = limitBytes(mb)
+        if (bytes == evictor.maxBytes && cache != null) return
+        evictor.maxBytes = bytes
+        val c = get(context)
+        Thread {
+            runCatching { synchronized(c) { evictor.evict(c, 0) } }
+        }.start()
+    }
+
+    /** Bytes in the cache and how many songs (or parts of songs) they belong to. */
+    fun usage(context: Context): Pair<Long, Int> {
+        val c = get(context)
+        return runCatching { c.cacheSpace to c.keys.size }.getOrDefault(0L to 0)
+    }
+
+    /** Empties the cache. Downloads are kept elsewhere and stay. */
+    fun clear(context: Context) {
+        val c = get(context)
+        c.keys.toList().forEach { key -> runCatching { c.removeResource(key) } }
+    }
+}
+
+/**
+ * Least-recently-used eviction like Media3's own, but with a limit that can change while the
+ * cache is open.
+ */
+@OptIn(UnstableApi::class)
+class AdjustableLruEvictor(@Volatile var maxBytes: Long) : CacheEvictor {
+    private val leastRecentlyUsed = TreeSet<CacheSpan> { a, b ->
+        val byTime = a.lastTouchTimestamp.compareTo(b.lastTouchTimestamp)
+        if (byTime != 0) byTime else a.compareTo(b)
+    }
+    private var currentSize = 0L
+
+    override fun requiresCacheSpanTouches(): Boolean = true
+
+    override fun onCacheInitialized() = Unit
+
+    override fun onStartFile(cache: Cache, key: String, position: Long, length: Long) {
+        if (length != C.LENGTH_UNSET.toLong()) evict(cache, length)
+    }
+
+    override fun onSpanAdded(cache: Cache, span: CacheSpan) {
+        leastRecentlyUsed.add(span)
+        currentSize += span.length
+        evict(cache, 0)
+    }
+
+    override fun onSpanRemoved(cache: Cache, span: CacheSpan) {
+        leastRecentlyUsed.remove(span)
+        currentSize -= span.length
+    }
+
+    override fun onSpanTouched(cache: Cache, oldSpan: CacheSpan, newSpan: CacheSpan) {
+        onSpanRemoved(cache, oldSpan)
+        onSpanAdded(cache, newSpan)
+    }
+
+    /** Removes the oldest spans until [required] more bytes fit. Call with the cache locked. */
+    fun evict(cache: Cache, required: Long) {
+        while (currentSize + required > maxBytes && leastRecentlyUsed.isNotEmpty()) {
+            cache.removeSpan(leastRecentlyUsed.first())
+        }
     }
 }
 

@@ -47,6 +47,16 @@ data class Settings(
     val detailsStyle: DetailsStyle = DetailsStyle.TIDAL,
     /** Everything chosen in Settings → Customize. */
     val look: Look = Look(),
+    /** Keep played and upcoming songs in the phone's cache automatically. */
+    val autoCache: Boolean = true,
+    /** Cache each song in full as it plays, even if you skip it partway. */
+    val cacheWholeSong: Boolean = true,
+    /** How many of the next songs in the queue to cache in full. */
+    val cacheAhead: Int = 5,
+    /** Cache ahead on mobile data too (otherwise only on Wi-Fi). */
+    val cacheAheadMobile: Boolean = false,
+    /** Most the cache may use, in MB; the least recently played songs go first. */
+    val cacheLimitMb: Int = 2048,
 )
 
 /** Saved logins and settings, in plain SharedPreferences (the secrets inside are encrypted). */
@@ -113,6 +123,11 @@ class Store(context: Context) {
         iconPack = prefs.getString("iconPack", null),
         detailsStyle = enumOr(prefs.getString("detailsStyle", null), DetailsStyle.TIDAL),
         look = Look.fromJson(prefs.getString("look", null)),
+        autoCache = prefs.getBoolean("autoCache", true),
+        cacheWholeSong = prefs.getBoolean("cacheWholeSong", true),
+        cacheAhead = prefs.getInt("cacheAhead", 5),
+        cacheAheadMobile = prefs.getBoolean("cacheAheadMobile", false),
+        cacheLimitMb = prefs.getInt("cacheLimitMb", 2048),
     )
 
     fun saveSettings(s: Settings) {
@@ -132,6 +147,11 @@ class Store(context: Context) {
             .putString("iconPack", s.iconPack)
             .putString("detailsStyle", s.detailsStyle.name)
             .putString("look", s.look.toJson())
+            .putBoolean("autoCache", s.autoCache)
+            .putBoolean("cacheWholeSong", s.cacheWholeSong)
+            .putInt("cacheAhead", s.cacheAhead)
+            .putBoolean("cacheAheadMobile", s.cacheAheadMobile)
+            .putInt("cacheLimitMb", s.cacheLimitMb)
             .apply()
     }
 

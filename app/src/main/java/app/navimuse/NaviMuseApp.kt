@@ -130,6 +130,7 @@ class NaviMuseApp : Application() {
         _settings.value = next
         store.saveSettings(next)
         Downloads.onSettingsChanged(this, next)
+        if (next.cacheLimitMb != before.cacheLimitMb) app.navimuse.playback.AudioCache.setLimit(this, next.cacheLimitMb)
         if (next.autoUpdate != before.autoUpdate) UpdateWorker.schedule(this, next.autoUpdate)
     }
 

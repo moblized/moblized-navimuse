@@ -3,6 +3,7 @@ package app.navimuse.playback
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -22,6 +23,7 @@ import app.navimuse.downloads.Downloads
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -75,18 +77,22 @@ object Streaming {
 }
 
 /**
- * Loads the start of the next song into the stream cache while the current one plays, so
- * skipping and moving to the next track start instantly. Downloaded songs are skipped.
+ * Keeps songs in the stream cache ahead of time, so they start instantly and play without a
+ * connection. With auto caching on (Settings → Downloads): the next songs in the queue in full,
+ * then the rest of the song that's playing, on Wi-Fi (or mobile data too, if allowed). Otherwise
+ * just the start of the next song, so skipping is quick. Downloaded songs are left alone.
  */
 @OptIn(UnstableApi::class)
-class NextTrackPreloader(
+class AutoCacher(
     private val player: Player,
     private val scope: CoroutineScope,
     private val app: NaviMuseApp,
 ) : Player.Listener {
+    private data class Target(val key: String, val uri: Uri, val bytes: Long)
+
     private var job: Job? = null
-    private var writer: CacheWriter? = null
-    private var preloadedKey: String? = null
+    @Volatile private var writer: CacheWriter? = null
+    private var plan: List<String> = emptyList()
 
     fun start() = player.addListener(this)
 
@@ -99,6 +105,8 @@ class NextTrackPreloader(
 
     override fun onTimelineChanged(timeline: Timeline, reason: Int) = schedule()
 
+    override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = schedule()
+
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         if (isPlaying) schedule()
     }
@@ -108,25 +116,64 @@ class NextTrackPreloader(
         writer = null
         job?.cancel()
         job = null
+        plan = emptyList()
+    }
+
+    /** The next [count] songs in the order they'll play (shuffle and repeat-all included). */
+    private fun upcoming(count: Int): List<Int> {
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty || count <= 0) return emptyList()
+        val repeat = if (player.repeatMode == Player.REPEAT_MODE_ALL) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+        val out = ArrayList<Int>(count)
+        var i = player.currentMediaItemIndex
+        while (out.size < count) {
+            i = timeline.getNextWindowIndex(i, repeat, player.shuffleModeEnabled)
+            if (i == C.INDEX_UNSET || i == player.currentMediaItemIndex || i in out) break
+            out += i
+        }
+        return out
+    }
+
+    private fun targets(): List<Target> {
+        val settings = app.settings.value
+        val unmetered = Streaming.unmetered(app)
+        val list = ArrayList<Target>()
+        fun add(index: Int, bytes: Long) {
+            if (index == C.INDEX_UNSET || index >= player.mediaItemCount) return
+            val config = player.getMediaItemAt(index).localConfiguration ?: return
+            val key = config.customCacheKey ?: return
+            if (Downloads.isKey(key) || list.any { it.key == key }) return
+            list += Target(key, config.uri, bytes)
+        }
+        if (settings.autoCache && (unmetered || settings.cacheAheadMobile)) {
+            upcoming(settings.cacheAhead).forEach { add(it, C.LENGTH_UNSET.toLong()) }
+            if (settings.cacheWholeSong) add(player.currentMediaItemIndex, C.LENGTH_UNSET.toLong())
+        } else {
+            // Just the start of the next song: a few seconds on mobile data, most of it on Wi-Fi.
+            add(player.nextMediaItemIndex, if (unmetered) 16L * 1024 * 1024 else 3L * 1024 * 1024)
+        }
+        return list
     }
 
     private fun schedule() {
-        val index = player.nextMediaItemIndex
-        if (index == C.INDEX_UNSET) return
-        val item = player.getMediaItemAt(index)
-        val config = item.localConfiguration ?: return
-        val key = config.customCacheKey ?: return
-        if (key == preloadedKey || Downloads.isKey(key)) return
+        val targets = targets()
+        val keys = targets.map { "${it.key}#${it.bytes}" }
+        if (keys == plan) return
         cancel()
-        preloadedKey = key
-        val uri = config.uri
-        // A few seconds is enough on mobile data; on Wi-Fi take most of the song.
-        val bytes = if (Streaming.unmetered(app)) 16L * 1024 * 1024 else 3L * 1024 * 1024
+        plan = keys
+        if (targets.isEmpty()) return
         job = scope.launch(Dispatchers.IO) {
-            val spec = DataSpec.Builder().setUri(uri).setKey(key).setLength(bytes).build()
-            val w = CacheWriter(Streaming.streamCache(app).createDataSource(), spec, null, null)
-            writer = w
-            runCatching { w.cache() }
+            for (t in targets) {
+                if (!isActive) break
+                val spec = DataSpec.Builder().setUri(t.uri).setKey(t.key)
+                    .apply { if (t.bytes > 0) setLength(t.bytes) }
+                    .build()
+                val w = CacheWriter(Streaming.streamCache(app).createDataSource(), spec, null, null)
+                writer = w
+                // Already-cached parts are skipped; a failed song just isn't cached.
+                runCatching { w.cache() }
+            }
+            writer = null
         }
     }
 }

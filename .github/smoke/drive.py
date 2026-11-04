@@ -527,6 +527,29 @@ def fine_tune():
     back()
 
 
+def auto_cache():
+    # Songs played so far should be in the cache, and Clear cache should empty it.
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Collection")
+    tap(desc="Settings")
+    settings_tab("Downloads")
+    n = None
+    for _ in range(10):
+        n = find(text=" cached ·", contains=True)
+        if n is not None:
+            break
+        adb("shell", "input", "swipe", "540", "1700", "540", "900", "400")
+        time.sleep(1.5)
+    assert n is not None, "no cache status in Settings → Downloads"
+    count = int(re.match(r"(\d+)", n.get("text")).group(1))
+    assert count >= 2, f"only {count} songs cached: {n.get('text')!r}"
+    shot("21b-auto-cache")
+    tap(text="Clear cache")
+    wait_for(text="Cache cleared", contains=True, timeout=20)
+    back()
+
+
 NIGHT_DRIVE = {
     "name": "Night Drive", "id": "", "imported": True,
     "schemes": {
@@ -664,6 +687,7 @@ for name, fn in [
     ("Dolby badge on a Dolby album", dolby_album),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
+    ("auto cache: played songs kept, then cleared", auto_cache),
     ("customize look and layout", customize),
     ("fine-tune: exact background colour", fine_tune),
     ("import a Symfonium colour theme", symfonium_theme),

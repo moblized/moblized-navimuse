@@ -52,7 +52,7 @@ class PlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var session: MediaLibrarySession? = null
     private var scrobbler: Scrobbler? = null
-    private var preloader: NextTrackPreloader? = null
+    private var preloader: AutoCacher? = null
     private lateinit var player: ExoPlayer
     private lateinit var memory: QueueMemory
 
@@ -90,7 +90,7 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         scrobbler = Scrobbler(player, scope, app).also { it.start() }
-        preloader = NextTrackPreloader(player, scope, app).also { it.start() }
+        preloader = AutoCacher(player, scope, app).also { it.start() }
         openEffects(player.audioSessionId)
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {

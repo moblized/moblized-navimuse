@@ -68,6 +68,11 @@ import app.navimuse.ui.components.LocalUi
 import app.navimuse.ui.components.rememberSoundEffects
 import app.navimuse.update.Updater
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /** The tabs across the top of Settings. */
 private enum class SettingsTab(val label: String) {
@@ -330,6 +335,88 @@ private fun DownloadSettings(vm: AppViewModel, onRemoveAll: () -> Unit) {
         headlineContent = { Text("Downloaded songs") },
         supportingContent = { Text("${downloads.size} on this phone, ${"%.1f".format(bytes / 1_073_741_824.0)} GB") },
         trailingContent = { if (downloads.isNotEmpty()) TextButton(onClick = onRemoveAll) { Text("Remove all") } },
+    )
+    HorizontalDivider()
+    AutoCacheSettings(vm)
+}
+
+private val cacheLimits = listOf(500, 1024, 2048, 5120, 10240, 20480, 51200)
+
+private fun sizeLabel(mb: Int): String = if (mb < 1024) "$mb MB" else "${mb / 1024} GB"
+
+private fun bytesLabel(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toDouble())
+    bytes >= 1L shl 20 -> "%.0f MB".format(bytes / (1L shl 20).toDouble())
+    else -> "${bytes / 1024} KB"
+}
+
+/**
+ * Auto cache: songs you play and the next ones in the queue are kept on the phone, so they
+ * start instantly and play without a connection. Unlike downloads, the oldest make room for
+ * new ones once the cache is full.
+ */
+@Composable
+private fun AutoCacheSettings(vm: AppViewModel) {
+    val settings by vm.settings.collectAsState()
+    var usage by remember { mutableStateOf(0L to 0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            usage = withContext(Dispatchers.IO) { vm.cacheUsage() }
+            delay(2000)
+        }
+    }
+    var limitMenu by remember { mutableStateOf(false) }
+    Group("Auto cache")
+    SwitchRow(
+        "Cache songs automatically",
+        "Songs you play, and the next ones in the queue, stay on the phone so they start instantly and play without a connection. " +
+            "When the cache is full, the songs you played longest ago make room.",
+        settings.autoCache,
+    ) { on -> vm.updateSettings { it.copy(autoCache = on) } }
+    if (settings.autoCache) {
+        SwitchRow("Cache whole songs", "Keep the full song even when you skip it partway.", settings.cacheWholeSong) { on ->
+            vm.updateSettings { it.copy(cacheWholeSong = on) }
+        }
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                if (settings.cacheAhead == 0) "Cache ahead: off" else "Cache ahead: the next ${settings.cacheAhead} song${if (settings.cacheAhead == 1) "" else "s"}",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Slider(
+                value = settings.cacheAhead.toFloat(),
+                onValueChange = { v -> vm.updateSettings { it.copy(cacheAhead = v.roundToInt()) } },
+                valueRange = 0f..25f,
+            )
+        }
+        SwitchRow(
+            "Cache on mobile data too",
+            "Otherwise whole songs and songs ahead are cached on Wi-Fi only; on mobile data just the start of the next song loads.",
+            settings.cacheAheadMobile,
+        ) { on -> vm.updateSettings { it.copy(cacheAheadMobile = on) } }
+    }
+    ListItem(
+        headlineContent = { Text("Cache size limit") },
+        supportingContent = { Text(sizeLabel(settings.cacheLimitMb)) },
+        trailingContent = {
+            DropdownMenu(expanded = limitMenu, onDismissRequest = { limitMenu = false }) {
+                cacheLimits.forEach { mb ->
+                    DropdownMenuItem(text = { Text(sizeLabel(mb)) }, onClick = {
+                        limitMenu = false
+                        vm.updateSettings { it.copy(cacheLimitMb = mb) }
+                    })
+                }
+            }
+        },
+        modifier = Modifier.clickable { limitMenu = true },
+    )
+    ListItem(
+        headlineContent = { Text("Cached now") },
+        supportingContent = {
+            Text("${usage.second} song${if (usage.second == 1) "" else "s"} cached · ${bytesLabel(usage.first)} of ${sizeLabel(settings.cacheLimitMb)}")
+        },
+        trailingContent = {
+            if (usage.second > 0) TextButton(onClick = { vm.clearCache() }) { Text("Clear cache") }
+        },
     )
 }
 

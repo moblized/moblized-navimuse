@@ -468,6 +468,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // --- auto cache ----------------------------------------------------------------------
+
+    /** Bytes in the stream cache and how many songs they belong to. */
+    fun cacheUsage(): Pair<Long, Int> = app.navimuse.playback.AudioCache.usage(app)
+
+    /** Empties the stream cache (downloads stay). */
+    fun clearCache() = action {
+        withContext(Dispatchers.IO) { app.navimuse.playback.AudioCache.clear(app) }
+        say("Cache cleared. Downloads are still on the phone.")
+    }
+
     // --- song menu: credits, save for later, blocking ------------------------------------
 
     suspend fun credits(song: Song): List<Credit> = api().credits(song.id)
