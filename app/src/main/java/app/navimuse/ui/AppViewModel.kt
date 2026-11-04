@@ -9,6 +9,7 @@ import app.navimuse.BlockedEvent
 import app.navimuse.NaviMuseApp
 import app.navimuse.data.Accent
 import app.navimuse.data.Blocklist
+import app.navimuse.playback.AudioCache
 import app.navimuse.net.Credit
 import app.navimuse.data.Look
 import app.navimuse.data.Settings
@@ -471,11 +472,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // --- auto cache ----------------------------------------------------------------------
 
     /** Bytes in the stream cache and how many songs they belong to. */
-    fun cacheUsage(): Pair<Long, Int> = app.navimuse.playback.AudioCache.usage(app)
+    fun cacheUsage(): Pair<Long, Int> = AudioCache.usage(app)
 
     /** Empties the stream cache (downloads stay). */
     fun clearCache() = action {
-        withContext(Dispatchers.IO) { app.navimuse.playback.AudioCache.clear(app) }
+        withContext(Dispatchers.IO) { AudioCache.clear(app) }
         say("Cache cleared. Downloads are still on the phone.")
     }
 
