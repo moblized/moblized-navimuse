@@ -123,6 +123,21 @@ def scroll_to(text=None, swipes=8, desc=None):
     raise AssertionError(f"couldn't scroll to {text!r}")
 
 
+def scroll_clear(text, swipes=6):
+    """Scrolls until [text] is on screen and well above the mini player, then returns it."""
+    for _ in range(swipes):
+        n = find(text)
+        if n is not None:
+            y1, y2 = map(int, re.findall(r"\d+", n.get("bounds"))[1::2])
+            if (y1 + y2) // 2 < 1750:
+                return n
+            adb("shell", "input", "swipe", "540", "1500", "540", "1000", "400")
+        else:
+            adb("shell", "input", "swipe", "540", "1700", "540", "1000", "400")
+        time.sleep(1)
+    raise AssertionError(f"couldn't scroll to {text!r}")
+
+
 def back():
     adb("shell", "input", "keyevent", "4")
     time.sleep(1.5)
@@ -515,12 +530,16 @@ def fine_tune():
     tap(text="Background")
     time.sleep(2)
     shot("22e2-colour-picker")
-    tap(text="Hex code")
+    # The picker opens under the row, so the hex box can be below the mini player: scroll to it.
+    tap_node(scroll_clear("Hex code"))
     adb("shell", "input", "keyevent", "123")  # end of the text
     for _ in range(6):
         adb("shell", "input", "keyevent", "67")  # delete
     type_text("203040")
-    tap(text="Use")
+    # Put the keyboard away so it can't cover the Use button.
+    if "mInputShown=true" in adb("shell", "dumpsys", "input_method"):
+        back()
+    tap_node(scroll_clear("Use"))
     time.sleep(2)
     shot("22f-fine-tune-background")
     samples = [pixel(1075, y) for y in (700, 1100, 1500)]
