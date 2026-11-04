@@ -59,6 +59,14 @@ jobs:
           fi
           echo "PASS  no delete requests in the Navidrome log" | tee -a smoke-out/results.txt
 
+      - name: Keep results as a workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-results
+          path: smoke-out
+          retention-days: 7
+
       - name: Upload results to a draft release
         if: always()
         env:

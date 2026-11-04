@@ -94,9 +94,20 @@ internal fun FineTuneSettings(vm: AppViewModel) {
             detail = set?.let { "#" + hex(Color(it)) } ?: role.detail,
             color = roleColor(scheme, role),
             fineTuned = set != null,
-            onClick = { picking = role },
+            onClick = { picking = if (picking == role) null else role },
             onReset = { change { it.withColor(dark, role, null) } },
         )
+        // The picker opens right under the colour, in the page.
+        if (picking == role) {
+            ColorPicker(
+                initial = roleColor(scheme, role),
+                dark = dark,
+                onDismiss = { picking = null },
+            ) { c ->
+                picking = null
+                change { it.withColor(dark, role, c.toArgb().toLong() and 0xFFFFFFFFL) }
+            }
+        }
     }
 
     HorizontalDivider(Modifier.padding(top = 8.dp))
@@ -162,17 +173,6 @@ internal fun FineTuneSettings(vm: AppViewModel) {
         Text("Reset fine-tuning")
     }
 
-    picking?.let { role ->
-        ColorPickerDialog(
-            title = role.label + if (dark) " (dark mode)" else " (light mode)",
-            initial = roleColor(scheme, role),
-            dark = dark,
-            onDismiss = { picking = null },
-        ) { c ->
-            picking = null
-            change { it.withColor(dark, role, c.toArgb().toLong() and 0xFFFFFFFFL) }
-        }
-    }
     if (confirmReset) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
@@ -265,7 +265,7 @@ private fun TuneRow(
 
 /** Pick any colour: hue, saturation and brightness sliders, a hex code, or a quick swatch. */
 @Composable
-private fun ColorPickerDialog(title: String, initial: Color, dark: Boolean, onDismiss: () -> Unit, onPick: (Color) -> Unit) {
+private fun ColorPicker(initial: Color, dark: Boolean, onDismiss: () -> Unit, onPick: (Color) -> Unit) {
     val start = remember { FloatArray(3).also { android.graphics.Color.colorToHSV(initial.toArgb(), it) } }
     var h by remember { mutableFloatStateOf(start[0]) }
     var s by remember { mutableFloatStateOf(start[1]) }
@@ -283,56 +283,59 @@ private fun ColorPickerDialog(title: String, initial: Color, dark: Boolean, onDi
     }
     val swatches = Accent.entries.filter { it.isPreset }.map { Color(if (dark) it.dark else it.light) } +
         listOf(Color.Black, Color(0xFF121212), Color(0xFF1E1E1E), Color(0xFF3A3A3A), Color(0xFFA3A3A3), Color(0xFFF2F2F2), Color.White)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+    Column(
+        Modifier
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(14.dp),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(12.dp)).background(color)
+                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
+        )
+        Spacer(Modifier.height(12.dp))
+        GradientSlider("Hue", h, 0f..360f, Brush.horizontalGradient((0..6).map { hsv(it * 60f % 360f, 1f, 1f) })) {
+            h = it
+            code = hex(hsv(h, s, v))
+        }
+        GradientSlider("Saturation", s, 0f..1f, Brush.horizontalGradient(listOf(hsv(h, 0f, v), hsv(h, 1f, v)))) {
+            s = it
+            code = hex(hsv(h, s, v))
+        }
+        GradientSlider("Brightness", v, 0f..1f, Brush.horizontalGradient(listOf(Color.Black, hsv(h, s, 1f)))) {
+            v = it
+            code = hex(hsv(h, s, v))
+        }
+        OutlinedTextField(
+            value = code,
+            onValueChange = { t ->
+                code = t.uppercase().filter { it in "0123456789ABCDEF" }.take(6)
+                if (code.length == 6) setFrom(Color(0xFF000000 or code.toLong(16)))
+            },
+            label = { Text("Hex code") },
+            placeholder = { Text("RRGGBB") },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            swatches.forEach { c ->
                 Box(
-                    Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(12.dp)).background(color)
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
+                    Modifier.size(30.dp).clip(CircleShape).background(c)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                        .clickable { setFrom(c) },
                 )
-                Spacer(Modifier.height(12.dp))
-                GradientSlider("Hue", h, 0f..360f, Brush.horizontalGradient((0..6).map { hsv(it * 60f % 360f, 1f, 1f) })) {
-                    h = it
-                    code = hex(hsv(h, s, v))
-                }
-                GradientSlider("Saturation", s, 0f..1f, Brush.horizontalGradient(listOf(hsv(h, 0f, v), hsv(h, 1f, v)))) {
-                    s = it
-                    code = hex(hsv(h, s, v))
-                }
-                GradientSlider("Brightness", v, 0f..1f, Brush.horizontalGradient(listOf(Color.Black, hsv(h, s, 1f)))) {
-                    v = it
-                    code = hex(hsv(h, s, v))
-                }
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { t ->
-                        code = t.uppercase().filter { it in "0123456789ABCDEF" }.take(6)
-                        if (code.length == 6) setFrom(Color(0xFF000000 or code.toLong(16)))
-                    },
-                    label = { Text("Hex code") },
-                    placeholder = { Text("RRGGBB") },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    swatches.forEach { c ->
-                        Box(
-                            Modifier.size(30.dp).clip(CircleShape).background(c)
-                                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                                .clickable { setFrom(c) },
-                        )
-                    }
-                }
             }
-        },
-        confirmButton = { TextButton(onClick = { onPick(color) }) { Text("Use") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = { onPick(color) }) { Text("Use") }
+        }
+    }
 }
 
 @Composable
