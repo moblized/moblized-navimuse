@@ -3,6 +3,7 @@ package app.navimuse.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,6 +49,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.ColorScheme
@@ -296,15 +299,15 @@ private fun ColorPicker(initial: Color, dark: Boolean, onDismiss: () -> Unit, on
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
         )
         Spacer(Modifier.height(12.dp))
-        GradientSlider("Hue", h, 0f..360f, Brush.horizontalGradient((0..6).map { hsv(it * 60f % 360f, 1f, 1f) })) {
+        GradientSlider("Hue", h, 0f..360f, (0..6).map { hsv(it * 60f % 360f, 1f, 1f) }) {
             h = it
             code = hex(hsv(h, s, v))
         }
-        GradientSlider("Saturation", s, 0f..1f, Brush.horizontalGradient(listOf(hsv(h, 0f, v), hsv(h, 1f, v)))) {
+        GradientSlider("Saturation", s, 0f..1f, listOf(hsv(h, 0f, v), hsv(h, 1f, v))) {
             s = it
             code = hex(hsv(h, s, v))
         }
-        GradientSlider("Brightness", v, 0f..1f, Brush.horizontalGradient(listOf(Color.Black, hsv(h, s, 1f)))) {
+        GradientSlider("Brightness", v, 0f..1f, listOf(Color.Black, hsv(h, s, 1f))) {
             v = it
             code = hex(hsv(h, s, v))
         }
@@ -339,10 +342,24 @@ private fun ColorPicker(initial: Color, dark: Boolean, onDismiss: () -> Unit, on
 }
 
 @Composable
-private fun GradientSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, track: Brush, onChange: (Float) -> Unit) {
+private fun GradientSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, colors: List<Color>, onChange: (Float) -> Unit) {
     Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Box(contentAlignment = Alignment.Center) {
-        Box(Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(7.dp)).background(track))
+        // One simple two-colour gradient per step: a single many-colour gradient crashed the
+        // emulator's software graphics, and might trip up other weak graphics drivers too.
+        Canvas(Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(7.dp))) {
+            val steps = colors.size - 1
+            val w = size.width / steps
+            for (i in 0 until steps) {
+                val x = i * w
+                drawRect(
+                    Brush.horizontalGradient(listOf(colors[i], colors[i + 1]), startX = x, endX = x + w),
+                    topLeft = Offset(x, 0f),
+                    // A hair wider, so no seam shows between steps.
+                    size = Size(if (i < steps - 1) w + 1f else w, size.height),
+                )
+            }
+        }
         Slider(
             value = value,
             onValueChange = onChange,
