@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Gunmetal fading to black, with a faint teal glow behind the note. -->
+<!-- Gunmetal fading to black, with a red glow behind the clef. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -18,8 +18,8 @@
     <path android:pathData="M0,0 L108,0 L108,108 L0,108 Z">
         <aapt:attr name="android:fillColor">
             <gradient android:type="radial" android:centerX="56" android:centerY="52" android:gradientRadius="34">
-                <item android:offset="0" android:color="#613DDCD2" />
-                <item android:offset="1" android:color="#003DDCD2" />
+                <item android:offset="0" android:color="#80FF2D2D" />
+                <item android:offset="1" android:color="#00FF2D2D" />
             </gradient>
         </aapt:attr>
     </path>
