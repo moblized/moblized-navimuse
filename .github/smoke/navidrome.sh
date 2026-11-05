@@ -5,7 +5,16 @@ set -euo pipefail
 ND=http://localhost:4533
 AUTH="u=admin&p=secret123&v=1.16.1&c=smoke&f=json"
 
-command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
+# ffmpeg: a ready-made build from GitHub first (Ubuntu's mirrors once took 35 minutes), else apt.
+if ! command -v ffmpeg >/dev/null; then
+  if timeout 180 curl -fsSL -o /tmp/ffmpeg.tar.xz \
+      https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz \
+      && mkdir -p /tmp/ffmpeg && tar xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg --strip-components=1; then
+    export PATH="/tmp/ffmpeg/bin:$PATH"
+  fi
+  command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
+fi
+ffmpeg -version | head -1
 
 mkdir -p "music/Test Artist/Sine Album" "music/Other Artist/Square Album" nd-data
 for i in 1 2 3 4; do

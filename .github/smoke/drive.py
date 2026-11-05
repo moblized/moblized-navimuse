@@ -704,6 +704,9 @@ def moods():
     tap(text="New mix")
     wait_for(text="From your genres: Ambient")
     back()
+    # Leave Home at the top again: later steps open Settings from the gear up there.
+    for _ in range(4):
+        adb("shell", "input", "swipe", "540", "700", "540", "1800", "300")
 
 
 def background_playback():
