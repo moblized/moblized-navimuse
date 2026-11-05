@@ -26,7 +26,7 @@ jobs:
       - name: Build the APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease -PversionCode=${{ github.run_number }}
+          ./gradlew testDebugUnitTest assembleRelease -PversionCode=${{ github.run_number }}
 
       - name: Start Navidrome with sample music
         run: bash .github/smoke/navidrome.sh

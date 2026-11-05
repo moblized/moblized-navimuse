@@ -194,7 +194,14 @@ private fun StyleRow(vm: AppViewModel, style: AppStyle?, row: HomeRow) {
         HomeSource.RECENTLY_PLAYED -> StyleAlbums(vm, title, row, AlbumListType.RECENT) { vm.api().albumList(AlbumListType.RECENT, row.count) }
         HomeSource.RECENTLY_ADDED -> StyleAlbums(vm, title, row, AlbumListType.NEWEST) { vm.api().albumList(AlbumListType.NEWEST, row.count) }
         HomeSource.MOST_PLAYED -> StyleAlbums(vm, title, row, AlbumListType.FREQUENT) { vm.api().albumList(AlbumListType.FREQUENT, row.count) }
-        HomeSource.RANDOM_ALBUMS -> StyleAlbums(vm, title, row, AlbumListType.RANDOM) { vm.api().albumList(AlbumListType.RANDOM, row.count) }
+        HomeSource.RANDOM_ALBUMS -> {
+            // Discover: mood tiles first (unless turned off in Settings → Layout), then random albums.
+            val moods = LocalLook.current.discoverMoods
+            StyleAlbums(
+                vm, title, row, AlbumListType.RANDOM,
+                under = if (moods) ({ MoodShelf(Modifier.padding(bottom = 16.dp)) }) else null,
+            ) { vm.api().albumList(AlbumListType.RANDOM, row.count) }
+        }
         HomeSource.FAVOURITE_ALBUMS -> StyleAlbums(vm, title, row, AlbumListType.STARRED) { vm.api().starred().albums.take(row.count) }
         HomeSource.RANDOM_SONGS -> StyleSongs(vm, title, row) { vm.api().randomSongs(row.count.coerceAtMost(50)) }
         HomeSource.FAVOURITE_SONGS -> StyleSongs(vm, title, row) { vm.api().starred().songs.take(row.count) }
@@ -224,12 +231,27 @@ private fun StyleRow(vm: AppViewModel, style: AppStyle?, row: HomeRow) {
 
 /** Albums as a sideways shelf, or as a grid when the style asks for several rows. */
 @Composable
-private fun StyleAlbums(vm: AppViewModel, title: String?, row: HomeRow, type: AlbumListType, load: suspend () -> List<Album>) {
+private fun StyleAlbums(
+    vm: AppViewModel,
+    title: String?,
+    row: HomeRow,
+    type: AlbumListType,
+    under: (@Composable () -> Unit)? = null,
+    load: suspend () -> List<Album>,
+) {
     val ui = LocalUi.current
     val loaded = rememberLoad("style-${row.source}", row.count) { load() }
     val s = loaded.state
-    if (s is Load.Ok && s.value.isEmpty()) return
+    if (s is Load.Ok && s.value.isEmpty()) {
+        // No albums, but [under] (Discover's moods) still shows.
+        if (under != null) {
+            title?.let { SectionHeader(it) }
+            under()
+        }
+        return
+    }
     title?.let { SectionHeader(it, action = "View all") { ui.navigate(Route.AlbumGrid(type)) } }
+    under?.invoke()
     when (s) {
         is Load.Loading -> ShelfPlaceholder(LocalLook.current.cardWidth)
         is Load.Failed -> ErrorBox(s.message, loaded.retry)

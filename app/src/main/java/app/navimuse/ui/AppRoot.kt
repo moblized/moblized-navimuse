@@ -80,6 +80,7 @@ import app.navimuse.ui.screens.CollectionScreen
 import app.navimuse.ui.screens.DownloadsScreen
 import app.navimuse.ui.screens.FavouritesScreen
 import app.navimuse.ui.screens.GenreScreen
+import app.navimuse.ui.screens.MoodScreen
 import app.navimuse.ui.screens.HomeScreen
 import app.navimuse.ui.screens.LoginScreen
 import app.navimuse.ui.screens.MiniPlayer
@@ -107,6 +108,7 @@ sealed interface Route {
     data class AlbumGrid(val type: AlbumListType) : Route
     data class Similar(val song: Song) : Route
     data class GenrePage(val name: String) : Route
+    data class MoodPage(val mood: app.navimuse.data.Mood) : Route
     data object Albums : Route
     data object Artists : Route
     data object Playlists : Route
@@ -255,6 +257,7 @@ fun AppRoot(vm: AppViewModel) {
                                 is Route.AlbumGrid -> AlbumsGridScreen(vm, top.type, onBack)
                                 is Route.Similar -> SimilarScreen(vm, top.song, onBack)
                                 is Route.GenrePage -> GenreScreen(vm, top.name, onBack)
+                                is Route.MoodPage -> MoodScreen(vm, top.mood, onBack)
                                 Route.Albums -> CollectionAlbumsScreen(vm, onBack)
                                 Route.Artists -> CollectionArtistsScreen(vm, onBack)
                                 Route.Playlists -> CollectionPlaylistsScreen(vm, onBack)

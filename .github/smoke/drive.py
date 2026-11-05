@@ -688,6 +688,24 @@ def symfonium_styles():
         server.terminate()
 
 
+def moods():
+    """Discover's mood tiles: Chill opens a mix (from the test library's Ambient album) that plays."""
+    tap(text="Home")
+    for _ in range(3):  # back to the top of Home
+        adb("shell", "input", "swipe", "540", "700", "540", "1800", "300")
+    tap_node(scroll_clear("Chill", swipes=8))
+    wait_for(text="New mix")
+    wait_for(text="From your genres: Ambient")
+    shot("13c-mood-chill")
+    tap(text="Play")
+    time.sleep(3)
+    out = adb("shell", "dumpsys", "media_session")
+    assert "Noise Song" in out, "the Chill mix didn't start playing"
+    tap(text="New mix")
+    wait_for(text="From your genres: Ambient")
+    back()
+
+
 def background_playback():
     # Music should keep playing with the app in the background.
     out = adb("shell", "dumpsys", "media_session")
@@ -707,6 +725,7 @@ for name, fn in [
     ("swipe a song right to add it to the queue", swipe_to_queue),
     ("Mixes tab", audiomuse_tab),
     ("genres", genres),
+    ("moods in Discover", moods),
     ("search", search),
     ("album and artist pages", album_and_artist),
     ("Dolby badge on a Dolby album", dolby_album),

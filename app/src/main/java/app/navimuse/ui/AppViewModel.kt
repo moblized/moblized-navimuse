@@ -12,6 +12,7 @@ import app.navimuse.data.Blocklist
 import app.navimuse.playback.AudioCache
 import app.navimuse.net.Credit
 import app.navimuse.data.Look
+import app.navimuse.data.Mood
 import app.navimuse.data.Settings
 import app.navimuse.downloads.Downloads
 import app.navimuse.net.Album
@@ -41,6 +42,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -308,6 +312,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val am = app.audioMuse() ?: throw IllegalStateException("Connect AudioMuse-AI in Settings first.")
         val hits = am.moodSearch(query, 40)
         return api().songs(hits.map { it.itemId })
+    }
+
+    /** Songs for a mood in Discover, and where they came from. */
+    data class MoodMix(val songs: List<Song>, val note: String)
+
+    /**
+     * A fresh mix for [mood]: by how songs sound when AudioMuse-AI is connected directly,
+     * otherwise random songs from the library's genres that fit the mood.
+     */
+    suspend fun moodMix(mood: Mood): MoodMix {
+        val am = app.audioMuse()
+        if (am != null) {
+            try {
+                // Ask for more than needed and pick from them, so "New mix" isn't the same list again.
+                val hits = am.moodSearch(mood.query, 120).shuffled().take(60)
+                val songs = Blocklist.allowed(api().songs(hits.map { it.itemId }))
+                if (songs.isNotEmpty()) return MoodMix(songs, "Picked by how they sound, with AudioMuse-AI")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Fall back to genres below.
+            }
+        }
+        val fitting = Mood.matchGenres(mood, api().genres().filter { it.songCount > 0 }.map { it.name })
+        if (fitting.isEmpty()) {
+            return MoodMix(
+                emptyList(),
+                "None of your genres fit this mood. Connect AudioMuse-AI in Settings to pick songs by how they sound.",
+            )
+        }
+        // A few of the best-fitting genres, mixed up a little so each mix differs.
+        val chosen = (fitting.take(4) + fitting.drop(4).shuffled().take(2)).shuffled().take(5)
+        val songs = coroutineScope {
+            chosen.map { g -> async { runCatching { api().randomSongs(20, genre = g) }.getOrDefault(emptyList()) } }.awaitAll()
+        }.flatten().distinctBy { it.id }.shuffled()
+        return MoodMix(Blocklist.allowed(songs).take(60), "From your genres: " + chosen.joinToString(", "))
     }
 
     suspend fun searchSongs(query: String): List<Song> = api().search(query, songs = 25, albums = 0, artists = 0).songs

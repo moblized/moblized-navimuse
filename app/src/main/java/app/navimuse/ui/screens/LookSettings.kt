@@ -168,6 +168,9 @@ internal fun LayoutSettings(vm: AppViewModel) {
     }
     Hint("Pick what Home shows, and in what order.")
     OrderList(HomeSection.entries, look.home, { it.label }) { v -> change { it.copy(home = v) } }
+    SwitchRow("Moods in Discover", "Chill, Workout, Party and more, at the top of Discover.", look.discoverMoods) { on ->
+        change { it.copy(discoverMoods = on) }
+    }
 
     HorizontalDivider(Modifier.padding(top = 8.dp))
     Group("Collection")

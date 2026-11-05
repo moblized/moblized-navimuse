@@ -172,8 +172,11 @@ class SubsonicClient(
     /** Lyrics from the song's tags or a .lrc file next to it (needs OpenSubsonic "songLyrics"). */
     suspend fun lyrics(songId: String): Lyrics? = Parse.lyrics(call("getLyricsBySongId", listOf("id" to songId)))
 
-    suspend fun randomSongs(size: Int = 50): List<Song> =
-        Parse.songList(call("getRandomSongs", listOf("size" to size.toString())), "randomSongs")
+    suspend fun randomSongs(size: Int = 50, genre: String? = null): List<Song> =
+        Parse.songList(
+            call("getRandomSongs", listOfNotNull("size" to size.toString(), genre?.let { "genre" to it })),
+            "randomSongs",
+        )
 
     // --- AudioMuse-AI, through Navidrome's plugin -------------------------------------------------
 
