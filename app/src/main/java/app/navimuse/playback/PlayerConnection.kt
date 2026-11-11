@@ -56,6 +56,8 @@ class PlayerConnection(private val app: NaviMuseApp) {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // The player retries songs the phone can't play in another form, and says so itself.
+            if (Convert.isFormatError(error.errorCode)) return
             _state.update { it.copy(error = describe(error)) }
         }
     }
@@ -205,6 +207,9 @@ class PlayerConnection(private val app: NaviMuseApp) {
 
     fun clearError() = _state.update { it.copy(error = null) }
 
+    /** A short note from the player (shown like an error, but nothing's wrong). */
+    fun notice(message: String) = _state.update { it.copy(error = message) }
+
     private fun refresh(rebuildQueue: Boolean) {
         val c = controller ?: return
         val queue = if (rebuildQueue || _state.value.queue.size != c.mediaItemCount) {
@@ -249,28 +254,12 @@ class PlayerConnection(private val app: NaviMuseApp) {
         )
     }
 
-    private fun describe(e: PlaybackException): String {
-        val song = controller?.currentMediaItem?.toSong()
-        val dolby = song?.let { Dolby.labelFor(it) }
-        val decoding = e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-            e.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
-            e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-            e.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED
-        if (dolby != null && decoding && app.settings.value.dolbyOriginal) {
-            return "This phone can't decode $dolby. Turn off \"Play Dolby Atmos in its original format\" in Settings and the server will convert it to stereo."
-        }
-        return describeGeneral(e)
-    }
-
-    private fun describeGeneral(e: PlaybackException): String = when (e.errorCode) {
+    // Format errors never get here: the player tries those songs another way (see Convert).
+    private fun describe(e: PlaybackException): String = when (e.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
         -> "Can't reach your server to play this song."
         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "The server refused to stream this song."
-        PlaybackException.ERROR_CODE_DECODING_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
-        -> "This phone can't play this file's format. Try a lower streaming quality in Settings so the server converts it."
         else -> "Playback stopped: ${e.errorCodeName}"
     }
 }

@@ -60,10 +60,13 @@ object Extras {
 
 /**
  * The cache key the player reads a song under: its download when it has one (so it plays
- * offline), otherwise the streamed copy at this bitrate.
+ * offline, unless that copy wouldn't play on this phone), otherwise the stream at this bitrate.
  */
 fun streamKey(songId: String, maxBitRateKbps: Int): String =
-    if (Downloads.isDownloaded(songId)) Downloads.key(songId) else "$songId@$maxBitRateKbps"
+    if (Downloads.isDownloaded(songId) && !Convert.downloadFailed(songId)) Downloads.key(songId) else "$songId@$maxBitRateKbps"
+
+/** The bitrate in a stream cache key ("id@192"), or null for a downloaded copy. */
+fun kbpsOfKey(key: String?): Int? = key?.takeIf { !Downloads.isKey(it) }?.substringAfterLast('@', "")?.toIntOrNull()
 
 /** Keys Android Auto reads from a song's details (androidx.media MediaConstants / MediaDescriptionCompat). */
 private const val AUTO_IS_EXPLICIT = "android.media.IS_EXPLICIT"

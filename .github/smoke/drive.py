@@ -709,6 +709,56 @@ def moods():
         adb("shell", "input", "swipe", "540", "700", "540", "1800", "300")
 
 
+def unplayable_switches():
+    """A song the phone can't play as sent (a WMA file) switches by itself to a form that plays."""
+    # Send original files on any network, so the WMA itself comes first.
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Collection")
+    tap(desc="Settings")
+    settings_tab("Playback")
+    # If a random mix already ran into the WMA song, forget that so this check starts fresh.
+    forget = find(text="Forget")
+    if forget is not None:
+        tap_node(forget)
+    tap(text="Streaming on mobile data")
+    tap(text="Original")
+    back()
+    tap(text="Search")
+    box = first(lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
+    tap_node(box)
+    adb("shell", "input", "keyevent", "123")  # end of the text
+    for _ in range(12):
+        adb("shell", "input", "keyevent", "67")  # delete
+    type_text("Odd")
+    wait_for(text="Odd Song 1", timeout=20)
+    adb("shell", "input", "keyevent", "111")
+    tap(text="Odd Song 1")
+    # The player says what it did, then plays on.
+    note = None
+    for _ in range(15):
+        root = dump()
+        note = next((x.get("text") for x in root.iter("node") if "playing as MP3" in x.get("text", "")), None)
+        if note:
+            break
+        time.sleep(1)
+    shot("15b-unplayable-switched")
+    assert note and "the original WMA" in note, "no note that the WMA song switched to MP3"
+    print(f"  note: {note}", flush=True)
+    time.sleep(4)
+    out = adb("shell", "dumpsys", "media_session")
+    assert "Odd Song 1" in out and "state=3" in out, "the WMA song isn't playing after switching"
+    # Back to the usual quality on mobile data.
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(1)
+    tap(text="Collection")
+    tap(desc="Settings")
+    settings_tab("Playback")
+    tap(text="Streaming on mobile data")
+    tap(text="Normal (192 kbps)")
+    back()
+
+
 def background_playback():
     # Music should keep playing with the app in the background.
     out = adb("shell", "dumpsys", "media_session")
@@ -732,6 +782,7 @@ for name, fn in [
     ("search", search),
     ("album and artist pages", album_and_artist),
     ("Dolby badge on a Dolby album", dolby_album),
+    ("a song the phone can't play switches by itself", unplayable_switches),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
     ("auto cache: played songs kept, then cleared", auto_cache),

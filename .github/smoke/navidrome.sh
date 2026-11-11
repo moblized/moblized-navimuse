@@ -30,6 +30,14 @@ for i in 1 2 3; do
     -c:a libmp3lame -b:a 128k "music/Other Artist/Square Album/0$i.mp3"
 done
 
+# A WMA song: Navidrome streams it, but Android can't play the file itself, so the app has to
+# switch to a converted stream.
+mkdir -p "music/Odd Artist/Odd Album"
+ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=330:duration=40" \
+  -metadata title="Odd Song 1" -metadata artist="Odd Artist" -metadata album_artist="Odd Artist" \
+  -metadata album="Odd Album" -metadata track=1 -metadata date=2022 -metadata genre=Odd \
+  -c:a wmav2 -b:a 128k "music/Odd Artist/Odd Album/01.wma"
+
 # A Dolby Digital Plus 5.1 album in .m4a, like Atmos music: Navidrome can't tell it from AAC,
 # so the app has to look inside the file to show its Dolby badge.
 mkdir -p "music/Surround Artist/Dolby Album"

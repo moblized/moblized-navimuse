@@ -76,11 +76,16 @@ class SubsonicClient(
 
     // --- links for the player and images (same guard, stable salt so they can be cached) -------
 
+    /**
+     * A song's stream: 0 = the original file, above 0 = converted at that bitrate in the server's
+     * usual format, below 0 = converted to MP3 at that bitrate (for songs the phone couldn't play).
+     */
     fun streamUrl(songId: String, maxBitRateKbps: Int): String {
         val p = buildList {
             add("id" to songId)
-            if (maxBitRateKbps > 0) {
-                add("maxBitRate" to maxBitRateKbps.toString())
+            if (maxBitRateKbps != 0) {
+                if (maxBitRateKbps < 0) add("format" to "mp3")
+                add("maxBitRate" to kotlin.math.abs(maxBitRateKbps).toString())
                 // Lets the player seek inside converted streams.
                 add("estimateContentLength" to "true")
             } else {

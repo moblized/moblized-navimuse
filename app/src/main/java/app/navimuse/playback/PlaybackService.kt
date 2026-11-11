@@ -8,6 +8,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -106,6 +107,51 @@ class PlaybackService : MediaLibraryService() {
                 val format = group.getTrackFormat(index)
                 val label = Dolby.fromMime(format.sampleMimeType, format.channelCount) ?: return
                 player.currentMediaItem?.toSong()?.let { Dolby.learn(it, label) }
+            }
+        })
+        // A song the phone can't play the way the server sent it: try it another way (the original
+        // file, MP3, a lower bitrate) from the same spot, and remember what worked.
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                if (!Convert.isFormatError(error.errorCode)) return
+                val index = player.currentMediaItemIndex
+                val item = player.currentMediaItem ?: return
+                val song = item.toSong() ?: return
+                val api = app.api() ?: return
+                val key = item.localConfiguration?.customCacheKey
+                val failed = kbpsOfKey(key)
+                // A broken half-saved copy would fail the same way again.
+                if (failed != null && key != null) runCatching { AudioCache.get(app).removeResource(key) }
+                val next = Convert.nextTry(song.id, failed, app.currentMaxBitRate())
+                if (next == null) {
+                    if (player.hasNextMediaItem()) {
+                        app.player.notice("This phone can't play \"${song.title}\" in any form the server sends, so it was skipped.")
+                        player.seekToNextMediaItem()
+                        player.prepare()
+                    } else {
+                        app.player.notice("This phone can't play \"${song.title}\" in any form the server sends.")
+                    }
+                    return
+                }
+                val position = player.currentPosition
+                player.replaceMediaItem(
+                    index,
+                    item.buildUpon().setUri(api.streamUrl(song.id, next)).setCustomCacheKey("${song.id}@$next").build(),
+                )
+                player.seekTo(index, position)
+                player.prepare()
+                app.player.notice(
+                    "\"${song.title}\" wouldn't play as ${Convert.describe(failed, song.suffix)} on this phone, " +
+                        "so it's playing as ${Convert.describe(next, song.suffix)}.",
+                )
+            }
+
+            // It plays: if that took a retry, remember the way that worked.
+            override fun onTracksChanged(tracks: Tracks) {
+                if (tracks.groups.none { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }) return
+                val item = player.currentMediaItem ?: return
+                val kbps = kbpsOfKey(item.localConfiguration?.customCacheKey) ?: return
+                item.toSong()?.let { Convert.worked(it, kbps) }
             }
         })
         // Blocked songs and artists are skipped when they come up next (picking one yourself plays it).

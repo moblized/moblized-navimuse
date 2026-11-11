@@ -13,6 +13,7 @@ import app.navimuse.net.ServerLogin
 import app.navimuse.net.SubsonicClient
 import app.navimuse.downloads.Downloads
 import app.navimuse.net.Song
+import app.navimuse.playback.Convert
 import app.navimuse.playback.Dolby
 import app.navimuse.playback.PlayerConnection
 import app.navimuse.ui.symfonium.SymfoniumStyles
@@ -70,6 +71,7 @@ class NaviMuseApp : Application() {
         _login.value = store.server()
         _audioMuse.value = store.audioMuse()
         Dolby.init(this)
+        Convert.init(this)
         CustomThemes.init(this)
         SymfoniumStyles.init(this)
         app.navimuse.data.Blocklist.init(this)
@@ -156,10 +158,12 @@ class NaviMuseApp : Application() {
      * converted copy would be plain stereo), otherwise the setting for the current network.
      */
     fun bitrateFor(song: Song): Int =
-        if (_settings.value.dolbyOriginal && Dolby.labelFor(song) != null) 0 else currentMaxBitRate()
+        Convert.preferred(song)
+            ?: if (_settings.value.dolbyOriginal && Dolby.labelFor(song) != null) 0 else currentMaxBitRate()
 
     fun downloadBitrateFor(song: Song): Int =
-        if (_settings.value.dolbyOriginal && Dolby.labelFor(song) != null) 0 else _settings.value.downloadQuality.kbps
+        Convert.preferred(song)
+            ?: if (_settings.value.dolbyOriginal && Dolby.labelFor(song) != null) 0 else _settings.value.downloadQuality.kbps
 
     /** Id of the player's audio output, for the phone's sound effects (Dolby Atmos, equalizer). */
     @Volatile var audioSessionId: Int = 0

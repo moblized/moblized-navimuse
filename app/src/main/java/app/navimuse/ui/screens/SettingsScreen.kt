@@ -26,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import app.navimuse.playback.Convert
 import app.navimuse.ui.icons.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -47,6 +48,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -226,11 +228,14 @@ private fun PlaybackSettings(vm: AppViewModel) {
     QualityPicker("Streaming on Wi-Fi", settings.wifiQuality) { q -> vm.updateSettings { it.copy(wifiQuality = q) } }
     QualityPicker("Streaming on mobile data", settings.mobileQuality) { q -> vm.updateSettings { it.copy(mobileQuality = q) } }
     Text(
-        "Original sends your files untouched. The others ask Navidrome to convert them to a smaller size.",
+        "Original sends your files untouched. The others ask Navidrome to convert them to a smaller size. " +
+            "If a song won't play on this phone that way, it switches by itself to one that does (the original, " +
+            "MP3 or a lower bitrate) and remembers it.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp),
     )
+    SwitchedSongsRow()
     Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text("Instant Mix length: ${settings.mixSize} songs", style = MaterialTheme.typography.bodyLarge)
         Slider(
@@ -243,7 +248,7 @@ private fun PlaybackSettings(vm: AppViewModel) {
     SwitchRow(
         "Play Dolby Atmos in its original format",
         "Atmos and surround songs stream and download untouched, even on mobile data, so your phone's Dolby decoder plays them. " +
-            "Turn off if they won't play, and the server converts them to stereo.",
+            "If one won't play, it switches to a stereo copy by itself.",
         settings.dolbyOriginal,
     ) { on -> vm.updateSettings { it.copy(dolbyOriginal = on) } }
     rememberSoundEffects()?.let { open ->
@@ -260,6 +265,25 @@ private fun PlaybackSettings(vm: AppViewModel) {
         settings.scrobble,
     ) { on -> vm.updateSettings { it.copy(scrobble = on) } }
     BlockedRow(vm)
+}
+
+/** Songs that play another way because this phone couldn't play them as sent, with a way to forget. */
+@Composable
+private fun SwitchedSongsRow() {
+    var count by remember { mutableIntStateOf(Convert.count()) }
+    if (count == 0) return
+    ListItem(
+        headlineContent = { Text("Songs played another way") },
+        supportingContent = {
+            Text("$count song${if (count == 1) "" else "s"} wouldn't play as sent, so they play another way. Forget this after changing the server's conversion settings.")
+        },
+        trailingContent = {
+            TextButton(onClick = {
+                Convert.forgetAll()
+                count = 0
+            }) { Text("Forget") }
+        },
+    )
 }
 
 /** Songs and artists blocked from the playing screen's menu, with a way to unblock them. */
