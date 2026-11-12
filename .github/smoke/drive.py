@@ -108,8 +108,44 @@ def tap(text=None, desc=None, timeout=30, contains=False, last=False):
     tap_node(wait_for(text, desc, timeout, contains, last))
 
 
-def type_text(s):
-    adb("shell", "input", "text", s.replace(" ", "%s"))
+KEYS = {":": ["KEYCODE_SHIFT_LEFT", "KEYCODE_SEMICOLON"], "/": ["KEYCODE_SLASH"], ".": ["KEYCODE_PERIOD"],
+        " ": ["KEYCODE_SPACE"], "-": ["KEYCODE_MINUS"], "_": ["KEYCODE_SHIFT_LEFT", "KEYCODE_MINUS"]}
+
+
+KEY_BY_KEY = False
+
+
+def type_text(s, shows=None):
+    """Types [s] into the focused box. With [shows], checks that text appeared and, if not, types key by key."""
+    global KEY_BY_KEY
+    if KEY_BY_KEY:
+        press_keys(s)
+        return
+    r = subprocess.run(["adb", "shell", "input", "text", s.replace(" ", "%s")], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0 or r.stdout.strip() or r.stderr.strip():
+        print(f"  input text: rc={r.returncode} {r.stdout.strip()[:200]} {r.stderr.strip()[:200]}", flush=True)
+    time.sleep(0.8)
+    if shows is None or find(text=shows, contains=True) is not None:
+        return
+    print(f"  {shows!r} didn't show after typing; typing key by key from now on", flush=True)
+    KEY_BY_KEY = True
+    press_keys(s)
+    if find(text=shows, contains=True) is None:
+        print(f"  still no {shows!r} on screen", flush=True)
+
+
+def press_keys(s):
+    for ch in s:
+        if ch.isalpha():
+            keys = (["KEYCODE_SHIFT_LEFT"] if ch.isupper() else []) + [f"KEYCODE_{ch.upper()}"]
+        elif ch.isdigit():
+            keys = [f"KEYCODE_{ch}"]
+        else:
+            keys = KEYS[ch]
+        if len(keys) == 1:
+            adb("shell", "input", "keyevent", keys[0])
+        else:
+            adb("shell", "input", "keycombination", *keys)
     time.sleep(0.8)
 
 
@@ -182,9 +218,9 @@ def login():
     wait_for(text="Connect", timeout=60)
     shot("01-login")
     tap(text="Navidrome address")
-    type_text("http://10.0.2.2:4533")
+    type_text("http://10.0.2.2:4533", shows="10.0.2.2")
     tap(text="Username")
-    type_text("admin")
+    type_text("admin", shows="admin")
     tap(text="Password")
     type_text("secret123")
     adb("shell", "input", "keyevent", "66")  # Enter = Go on the password field
