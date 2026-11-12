@@ -412,6 +412,17 @@ def album_and_artist():
     wait_for(desc="Instant Mix")
     time.sleep(2)
     shot("14-album")
+    # Instant Mix opens the mix as a page and plays nothing until Play is pressed.
+    before = re.findall(r"description=([^\n]*)", adb("shell", "dumpsys", "media_session"))
+    tap(desc="Instant Mix")
+    wait_for(text="Based on Square Album by", contains=True, timeout=20)
+    wait_for(text="New mix")
+    time.sleep(2)
+    shot("14a-instant-mix-page")
+    after = re.findall(r"description=([^\n]*)", adb("shell", "dumpsys", "media_session"))
+    assert before == after, f"opening the Instant Mix changed what's playing: {before} → {after}"
+    back()
+    wait_for(desc="Instant Mix")
     tap(text="Other Artist")
     wait_for(text="Artist radio")
     time.sleep(2)

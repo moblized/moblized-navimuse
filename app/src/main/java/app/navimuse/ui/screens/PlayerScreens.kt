@@ -143,6 +143,7 @@ import androidx.media3.common.Player
 import app.navimuse.net.Lyrics
 import app.navimuse.net.SubsonicClient
 import app.navimuse.ui.AppViewModel
+import app.navimuse.ui.MixSeed
 import app.navimuse.ui.Route
 import app.navimuse.ui.queuePlaylistName
 import app.navimuse.ui.components.Cover
@@ -527,7 +528,7 @@ private fun NowPlayingMenu(
             SheetItem("Save for later", Icons.Filled.BookmarkBorder, pick { vm.saveForLater(song) })
             SheetItem("Add to playlist", Icons.AutoMirrored.Filled.PlaylistAdd, pick { ui.pickPlaylistFor(listOf(song)) })
             SheetItem("Share", Icons.Filled.Share, pick { shareSong(context, song) })
-            SheetItem("Go to track radio", Icons.Filled.Radio, pick { vm.instantMix(song) })
+            SheetItem("Go to track radio", Icons.Filled.Radio, pick { ui.navigate(Route.MixPage(MixSeed.FromSong(song))) })
             SheetItem("Credits", Icons.Filled.Info, pick(onCredits))
             song.albumId?.let { id -> SheetItem("Go to album", Icons.Filled.Album, pick { ui.navigate(Route.AlbumPage(id)) }) }
             song.artistId?.let { id -> SheetItem("Go to artist", Icons.Filled.Mic, pick { ui.navigate(Route.ArtistPage(id)) }) }

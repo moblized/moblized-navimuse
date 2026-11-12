@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import app.navimuse.net.Album
 import app.navimuse.net.AlbumListType
 import app.navimuse.ui.AppViewModel
+import app.navimuse.ui.MixSeed
 import app.navimuse.ui.Route
 import app.navimuse.ui.components.ActionPill
 import app.navimuse.ui.components.AlbumCard
@@ -159,6 +160,7 @@ fun HomeScreen(vm: AppViewModel) {
 
 @Composable
 private fun HomeSectionView(vm: AppViewModel, section: HomeSection) {
+    val ui = LocalUi.current
     fun row(source: HomeSource) = HomeRow(source, title = null, showHeader = true, count = 20, gridRows = 1, gridColumns = 3)
     when (section) {
         HomeSection.SHORTCUTS -> Row(
@@ -166,7 +168,7 @@ private fun HomeSectionView(vm: AppViewModel, section: HomeSection) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             ActionPill("Shuffle all", Icons.Filled.Shuffle, primary = true) { vm.shuffleAll() }
-            ActionPill("Surprise mix", Icons.Filled.AutoAwesome) { vm.surpriseMix() }
+            ActionPill("Surprise mix", Icons.Filled.AutoAwesome) { ui.navigate(Route.MixPage(MixSeed.Surprise())) }
         }
         HomeSection.MIXES -> MixesForYou(vm)
         HomeSection.RECENTLY_PLAYED -> StyleRow(vm, null, row(HomeSource.RECENTLY_PLAYED))
@@ -323,7 +325,7 @@ fun openShortcut(vm: AppViewModel, ui: app.navimuse.ui.components.UiActions, sc:
         Shortcut.ARTISTS -> ui.navigate(Route.Artists)
         Shortcut.FAVOURITES -> ui.navigate(Route.Favourites)
         Shortcut.DOWNLOADS -> ui.navigate(Route.Downloads)
-        Shortcut.MIX -> vm.surpriseMix()
+        Shortcut.MIX -> ui.navigate(Route.MixPage(MixSeed.Surprise()))
         Shortcut.MIXES -> ui.selectTab(Tab.Mixes)
         Shortcut.SHUFFLE -> vm.shuffleAll()
     }
@@ -332,6 +334,7 @@ fun openShortcut(vm: AppViewModel, ui: app.navimuse.ui.components.UiActions, sc:
 /** Instant Mixes seeded from albums you play a lot (or random ones on a new server). */
 @Composable
 private fun MixesForYou(vm: AppViewModel) {
+    val ui = LocalUi.current
     val loaded = rememberLoad("mixes") {
         vm.api().albumList(AlbumListType.FREQUENT, 10).ifEmpty { vm.api().albumList(AlbumListType.RANDOM, 10) }
     }
@@ -343,7 +346,7 @@ private fun MixesForYou(vm: AppViewModel) {
             EmptyBox("Play some music and mixes will show up here.")
         } else {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(s.value, key = { it.id }) { album -> MixCard(album) { vm.mixFromAlbum(album) } }
+                items(s.value, key = { it.id }) { album -> MixCard(album) { ui.navigate(Route.MixPage(MixSeed.FromAlbum(album))) } }
             }
         }
     }

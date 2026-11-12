@@ -266,36 +266,35 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun mixSize() = settings.value.mixSize
 
-    /** AudioMuse-AI Instant Mix: this song, then songs that sound like it. */
-    fun instantMix(seed: Song) = action("Making an Instant Mix…") {
-        val similar = Blocklist.allowed(api().similarSongs(seed.id, mixSize())).filter { it.id != seed.id }
-        if (similar.isEmpty()) {
-            say("No similar songs came back. Has AudioMuse-AI analysed this song yet?")
-            return@action
+    /** Instant Mixes made this session, so going back to one shows the same songs. */
+    private val mixes = HashMap<String, Mix>()
+
+    /**
+     * The Instant Mix for [seed]: the song it starts from, then songs that sound like it. Made once
+     * and kept (ask for [fresh] to make a new one). Nothing plays; the mix page has a Play button.
+     */
+    suspend fun mix(seed: MixSeed, fresh: Boolean = false): Mix {
+        if (!fresh) synchronized(mixes) { mixes[seed.key] }?.let { return it }
+        val first = when (seed) {
+            is MixSeed.FromSong -> seed.song
+            is MixSeed.FromAlbum -> Blocklist.allowed(api().album(seed.album.id).songs).randomOrNull()
+                ?: throw IllegalStateException("This album has no songs to start a mix from.")
+            is MixSeed.Surprise -> Blocklist.allowed(api().randomSongs(5)).firstOrNull()
+                ?: throw IllegalStateException("Your library has no songs to start a mix from.")
         }
-        play(listOf(seed) + similar, from = PlaySource("Instant Mix: ${seed.title}"))
+        val similar = Blocklist.allowed(api().similarSongs(first.id, mixSize())).filter { it.id != first.id }
+        val mix = Mix(seed, first, listOf(first) + similar)
+        synchronized(mixes) { mixes[seed.key] = mix }
+        return mix
     }
 
-    fun mixFromAlbum(album: Album) = action("Making an Instant Mix…") {
-        val seed = Blocklist.allowed(api().album(album.id).songs).randomOrNull() ?: return@action
-        val similar = Blocklist.allowed(api().similarSongs(seed.id, mixSize())).filter { it.id != seed.id }
-        if (similar.isEmpty()) {
-            say("No similar songs came back. Has AudioMuse-AI analysed this album yet?")
-            return@action
-        }
-        play(listOf(seed) + similar, from = PlaySource("Instant Mix: ${album.name}", Route.AlbumPage(album.id)))
-    }
+    /** Plays a mix from its page. */
+    fun playMix(mix: Mix, index: Int = 0, shuffle: Boolean = false) =
+        play(mix.songs, index, shuffle, from = PlaySource(mix.name, Route.MixPage(mix.seed)))
 
     fun artistRadio(artist: Artist) = action("Starting artist radio…") {
         val songs = Blocklist.allowed(api().similarSongsByArtist(artist.id, mixSize()))
         if (songs.isEmpty()) say("No songs came back for ${artist.name}'s radio.") else play(songs, from = PlaySource("${artist.name} radio", Route.ArtistPage(artist.id)))
-    }
-
-    /** An Instant Mix from a random song in your library. */
-    fun surpriseMix() = action("Making a surprise mix…") {
-        val seed = Blocklist.allowed(api().randomSongs(5)).firstOrNull() ?: return@action
-        val similar = Blocklist.allowed(api().similarSongs(seed.id, mixSize())).filter { it.id != seed.id }
-        play(listOf(seed) + similar, from = PlaySource("Surprise mix"))
     }
 
     fun shuffleAll() = action("Shuffling your library…") {

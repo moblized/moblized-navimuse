@@ -106,6 +106,7 @@ import app.navimuse.net.Playlist
 import app.navimuse.net.Song
 import app.navimuse.net.SubsonicClient
 import app.navimuse.ui.AppViewModel
+import app.navimuse.ui.MixSeed
 import app.navimuse.ui.Route
 import app.navimuse.ui.formatDuration
 import app.navimuse.ui.theme.ArtShape
@@ -508,7 +509,7 @@ fun SongMenu(song: Song, expanded: Boolean, onDismiss: () -> Unit, extra: (@Comp
     val downloads by vm.downloads.collectAsState()
     val saved = downloads[song.id] != null
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        MenuItem("Instant Mix", Icons.Filled.AutoAwesome) { onDismiss(); vm.instantMix(song) }
+        MenuItem("Instant Mix", Icons.Filled.AutoAwesome) { onDismiss(); ui.navigate(Route.MixPage(MixSeed.FromSong(song))) }
         if (info?.sonicSimilarity == true) {
             MenuItem("Similar songs", Icons.Filled.Waves) { onDismiss(); ui.navigate(Route.Similar(song)) }
         }

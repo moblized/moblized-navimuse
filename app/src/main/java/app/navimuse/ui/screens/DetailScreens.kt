@@ -64,6 +64,7 @@ import app.navimuse.playback.Dolby
 import app.navimuse.ui.components.QualityBadge
 import app.navimuse.net.SubsonicClient
 import app.navimuse.ui.AppViewModel
+import app.navimuse.ui.MixSeed
 import app.navimuse.ui.Route
 import app.navimuse.ui.components.ActionPill
 import app.navimuse.ui.components.AlbumCard
@@ -246,7 +247,7 @@ fun AlbumScreen(vm: AppViewModel, albumId: String, onBack: () -> Unit) {
                     IconsRow {
                         StarAction(a.id, SubsonicClient.StarKind.ALBUM, a.starred)
                         DownloadAction(songs, onDownload = { vm.download(songs) }, onRemove = { vm.removeDownloads(songs) })
-                        CircleAction(Icons.Filled.AutoAwesome, "Instant Mix") { vm.mixFromAlbum(a) }
+                        CircleAction(Icons.Filled.AutoAwesome, "Instant Mix") { ui.navigate(Route.MixPage(MixSeed.FromAlbum(a))) }
                         MoreAction(songs)
                     }
                     ActionsRow {
@@ -410,7 +411,7 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
                             onRemove = { vm.setPlaylistAutoDownload(p, songs, false) },
                         )
                         if (songs.isNotEmpty()) {
-                            CircleAction(Icons.Filled.AutoAwesome, "Instant Mix") { vm.instantMix(songs.random()) }
+                            CircleAction(Icons.Filled.AutoAwesome, "Instant Mix") { ui.navigate(Route.MixPage(MixSeed.FromSong(songs.random()))) }
                         }
                         CircleAction(Icons.Filled.ContentCopy, "Copy playlist") {
                             ui.saveAsPlaylist(songs, "${app.navimuse.net.PlaylistNames.pretty(p.name)} copy")

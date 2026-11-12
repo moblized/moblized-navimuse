@@ -67,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.navimuse.net.Song
 import app.navimuse.ui.AppViewModel
+import app.navimuse.ui.MixSeed
 import app.navimuse.ui.Route
 import app.navimuse.ui.components.ActionPill
 import app.navimuse.ui.components.CardTone
@@ -227,10 +228,10 @@ fun MixesScreen(vm: AppViewModel) {
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         player.current?.song?.let { now ->
-                            ActionPill("From what's playing", Icons.Filled.AutoAwesome, primary = true) { vm.instantMix(now) }
+                            ActionPill("From what's playing", Icons.Filled.AutoAwesome, primary = true) { ui.navigate(Route.MixPage(MixSeed.FromSong(now))) }
                         }
                         ActionPill("Pick a song", Icons.Filled.Search) { picking = Pick.MIX_SEED }
-                        ActionPill("Surprise me", Icons.Filled.Shuffle) { vm.surpriseMix() }
+                        ActionPill("Surprise me", Icons.Filled.Shuffle) { ui.navigate(Route.MixPage(MixSeed.Surprise())) }
                     }
                 }
             }
@@ -366,7 +367,7 @@ fun MixesScreen(vm: AppViewModel) {
     when (picking) {
         Pick.MIX_SEED -> SongPickerDialog("Mix from which song?", onDismiss = { picking = null }) {
             picking = null
-            vm.instantMix(it)
+            ui.navigate(Route.MixPage(MixSeed.FromSong(it)))
         }
         Pick.PATH_START -> SongPickerDialog("Start the path at…", onDismiss = { picking = null }) {
             picking = null
