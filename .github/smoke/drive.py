@@ -783,7 +783,8 @@ def unplayable_switches():
     print(f"  note: {note}", flush=True)
     time.sleep(4)
     out = adb("shell", "dumpsys", "media_session")
-    assert "Odd Song 1" in out and "state=3" in out, "the WMA song isn't playing after switching"
+    # Newer Android writes "state=PLAYING(3)", older "state=3".
+    assert "Odd Song 1" in out and re.search(r"state=(PLAYING\()?3\b", out), "the WMA song isn't playing after switching"
     # Back to the usual quality on mobile data.
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
     time.sleep(1)
