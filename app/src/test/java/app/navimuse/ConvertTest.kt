@@ -51,6 +51,31 @@ class ConvertTest {
     }
 
     @Test
+    fun aSwitchSaysWhereItStarted() {
+        val s = song("s5")
+        Convert.nextTry("s5", 0, 0)
+        assertEquals(Convert.Switch(0, Convert.MP3), Convert.worked(s, Convert.MP3))
+        // Said once only.
+        assertNull(Convert.worked(s, Convert.MP3))
+        // A broken download that then streamed fine.
+        val d = song("s5d")
+        Convert.nextTry("s5d", null, 192)
+        assertEquals(Convert.Switch(null, 0), Convert.worked(d, 0))
+    }
+
+    @Test
+    fun givingUpLearnsNothing() {
+        // The server, not the phone, was the problem: nothing is remembered.
+        val s = song("s6")
+        Convert.nextTry("s6", 192, 192)
+        Convert.giveUp("s6")
+        assertNull(Convert.worked(s, 0))
+        assertNull(Convert.preferred(s))
+        // And the next failure starts over from the original.
+        assertEquals(0, Convert.nextTry("s6", 192, 192))
+    }
+
+    @Test
     fun threeSongsOfAKindTeachTheKind() {
         var m = Convert.Memory()
         m = m.remember(song("a", rate = 192000, bits = 24), Convert.MP3)

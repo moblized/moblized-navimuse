@@ -38,6 +38,8 @@ import app.navimuse.ui.icons.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -54,6 +56,8 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -171,7 +175,8 @@ fun AppRoot(vm: AppViewModel) {
     }
     LaunchedEffect(playerState.error) {
         playerState.error?.let {
-            snackbar.showSnackbar(it)
+            // Player notes say what happened to a song and what to do: long enough to read.
+            snackbar.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long)
             vm.player.clearError()
         }
     }
@@ -299,7 +304,16 @@ fun AppRoot(vm: AppViewModel) {
                             Modifier.padding(bottom = with(LocalDensity.current) { bottomBarPx.toDp() })
                         },
                     ),
-            )
+            ) { data ->
+                // Always solid, whatever the theme, so the list behind never shows through the text.
+                val container = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 1f)
+                Snackbar(
+                    data,
+                    containerColor = container,
+                    contentColor = if (container.luminance() > 0.5f) Color.Black else Color.White,
+                    dismissActionContentColor = if (container.luminance() > 0.5f) Color.Black else Color.White,
+                )
+            }
         }
 
         playlistPickFor?.let { songs ->

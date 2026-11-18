@@ -19,6 +19,7 @@ An Android music player for **Navidrome** with **AudioMuse-AI** mixes, built so 
   - **Mood search** (optional, talks to AudioMuse-AI directly): type "calm piano for a rainy night" and get matching songs.
 - **Keep AudioMuse playlists:** AudioMuse-AI deletes every playlist ending in `_automatic` each time it runs clustering. NaviMuse marks those playlists and can save a normal copy, one at a time or all at once, so the next run leaves them alone.
 - **Playback** keeps going in the background, with notification, lock-screen and Bluetooth controls. Songs start after about a second of audio, the next song is pre-loaded so skips are instant, and every song reuses one connection to your server. Recent audio is cached on the phone (up to 1 GB). The queue comes back after a restart, and plays are reported to Navidrome.
+- **Songs that won't play:** when a song stops, the app first looks at what your server is sending. If Navidrome can't open the song's file (moved, renamed or deleted since its last scan), you get a note saying so and the queue moves on. If the phone can't play the format, the song switches by itself to one that plays (the original file, MP3, a lower bitrate), and the app remembers what worked.
 - **Android Auto:** tabs for Mixes, Recently added, Playlists and Favourites, an "Instant Mix from what's playing" button, and voice search ("play … on NaviMuse").
 - **Streaming quality** can be set separately for Wi-Fi and mobile data (original, 320, 192 or 128 kbps).
 - **Home-screen icon** switches to its dark version when the app is in dark mode.

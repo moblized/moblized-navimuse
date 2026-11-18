@@ -56,8 +56,9 @@ class PlayerConnection(private val app: NaviMuseApp) {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            // The player retries songs the phone can't play in another form, and says so itself.
-            if (Convert.isFormatError(error.errorCode)) return
+            // The player looks into songs that didn't play (missing on the server, a format the
+            // phone can't play…) and says what happened itself.
+            if (Convert.isSongError(error.errorCode)) return
             _state.update { it.copy(error = describe(error)) }
         }
     }
@@ -254,7 +255,7 @@ class PlayerConnection(private val app: NaviMuseApp) {
         )
     }
 
-    // Format errors never get here: the player tries those songs another way (see Convert).
+    // Song errors never get here: the player looks into those itself (see PlaybackService).
     private fun describe(e: PlaybackException): String = when (e.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,

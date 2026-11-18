@@ -816,6 +816,38 @@ def unplayable_switches():
     back()
 
 
+def missing_song_skips():
+    """A song Navidrome lists but whose file is gone: the app says so, without trying every format."""
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Search")
+    box = first(lambda: find(text="Odd"), lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
+    tap_node(box)
+    adb("shell", "input", "keyevent", "123")  # end of the text
+    for _ in range(12):
+        adb("shell", "input", "keyevent", "67")  # delete
+    type_text("Vanished")
+    wait_for(text="Vanished Track", timeout=20)
+    adb("shell", "input", "keyevent", "111")
+    tap(text="Vanished Track")
+    note = None
+    switched = None
+    for _ in range(20):
+        root = dump()
+        texts = [x.get("text", "") for x in root.iter("node")]
+        note = next((t for t in texts if "can't find its file" in t), None)
+        switched = switched or next((t for t in texts if "Vanished" in t and ("playing as" in t or "in any form" in t)), None)
+        if note:
+            break
+        time.sleep(1)
+    shot("15c-missing-song")
+    assert note, "no note that Navidrome can't find the song's file"
+    assert "Vanished Track" in note, f"the note doesn't name the song: {note}"
+    assert not switched, f"it tried other formats for a missing file: {switched}"
+    print(f"  note: {note}", flush=True)
+    back()
+
+
 def background_playback():
     # Music should keep playing with the app in the background.
     out = adb("shell", "dumpsys", "media_session")
@@ -840,6 +872,7 @@ for name, fn in [
     ("album and artist pages", album_and_artist),
     ("Dolby badge on a Dolby album", dolby_album),
     ("a song the phone can't play switches by itself", unplayable_switches),
+    ("a song whose file is gone on the server is skipped with a note", missing_song_skips),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
     ("auto cache: played songs kept, then cleared", auto_cache),

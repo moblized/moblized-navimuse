@@ -41,6 +41,15 @@ object Convert {
     @Synchronized
     fun downloadFailed(songId: String): Boolean = songId in memory.badDownloads
 
+    /**
+     * Errors the player looks into itself (see PlaybackService): the phone couldn't read what it
+     * was sent, or the server sent an error instead of audio.
+     */
+    fun isSongError(code: Int): Boolean = isFormatError(code) || code in setOf(
+        PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+    )
+
     /** Errors that mean the phone couldn't read or decode what it was sent. */
     fun isFormatError(code: Int): Boolean = code in setOf(
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
@@ -70,12 +79,31 @@ object Convert {
         return next
     }
 
-    /** [song] played fine as [kbps]: remember it, if it took a retry to get there. */
+    /**
+     * [song] plays as [kbps]. If it took a retry to get there, remembers that and returns the way
+     * it was tried first (null: nothing to say).
+     */
     @Synchronized
-    fun worked(song: Song, kbps: Int) {
-        if (tried.remove(song.id) == null) return
+    fun worked(song: Song, kbps: Int): Switch? {
+        val done = tried.remove(song.id) ?: return null
+        val first = done.firstOrNull()
+        // It plays the very way that failed before: that was a passing hiccup, nothing to learn.
+        if (first == kbps) return null
         memory = memory.remember(song, kbps)
         save()
+        return Switch(if (first == DOWNLOAD) null else first, kbps)
+    }
+
+    /** A song that needed another form: tried first as [from] (null: its download), plays as [to]. */
+    data class Switch(val from: Int?, val to: Int)
+
+    /**
+     * Stops trying [songId] another way without learning anything: the server, not the phone,
+     * was the problem (its file is missing, say). The next play starts over.
+     */
+    @Synchronized
+    fun giveUp(songId: String) {
+        tried.remove(songId)
     }
 
     /** Forgets every fix, e.g. after the server's conversion settings changed. */
