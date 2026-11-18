@@ -17,7 +17,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.DefaultShuffleOrder
+import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
@@ -336,7 +336,7 @@ class PlaybackService : MediaLibraryService() {
             val first = player.mediaItemCount
             player.addMediaItems(items)
             if (order != null && order.size == first) {
-                player.setShuffleOrder(DefaultShuffleOrder((order + (first until first + items.size)).toIntArray(), System.nanoTime()))
+                player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder((order + (first until first + items.size)).toIntArray(), System.nanoTime()))
             }
         }
     }
