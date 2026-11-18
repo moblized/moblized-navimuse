@@ -17,6 +17,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.DefaultShuffleOrder
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
@@ -139,6 +140,24 @@ class PlaybackService : MediaLibraryService() {
                 )
             }
         })
+        // Autoplay radio: when the last song up starts (the end of the queue, a single, a one-song
+        // album), songs like it are added after it, so the music keeps going.
+        player.addListener(object : Player.Listener {
+            override fun onEvents(p: Player, events: Player.Events) {
+                if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) autoRadioFor = null
+                if (events.containsAny(
+                        Player.EVENT_MEDIA_ITEM_TRANSITION,
+                        Player.EVENT_TIMELINE_CHANGED,
+                        Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                        Player.EVENT_REPEAT_MODE_CHANGED,
+                        Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED,
+                    )
+                ) {
+                    keepGoing()
+                }
+            }
+        })
+
         // Blocked songs and artists are skipped when they come up next (picking one yourself plays it).
         player.addListener(object : Player.Listener {
             private var skipped = 0
@@ -199,6 +218,8 @@ class PlaybackService : MediaLibraryService() {
             // Moved on meanwhile (another song, or Play pressed again): leave it be.
             fun stillStuck() = player.playerError != null && player.currentMediaItemIndex == index &&
                 player.currentMediaItem?.mediaId == item.mediaId
+            // Autoplay may be adding songs after this one: wait for it, so there's somewhere to go.
+            autoRadioJob?.join()
             if (!stillStuck()) return@launch
             when (check) {
                 StreamCheck.Audio -> {
@@ -273,6 +294,63 @@ class PlaybackService : MediaLibraryService() {
         )
         player.seekTo(index, position)
         player.prepare()
+    }
+
+    // --- autoplay radio ----------------------------------------------------------------------
+
+    /** The queue item autoplay last looked for songs for (asked once per song, even if none came). */
+    private var autoRadioFor: String? = null
+    private var autoRadioJob: Job? = null
+
+    /**
+     * When the song playing is the last one up and repeat is off, adds songs like it after it (an
+     * Instant Mix without the song itself, or its artist's radio if that finds nothing), so the
+     * music keeps going without a gap. They're marked as autoplay, so "Add to queue" puts your
+     * songs before them.
+     */
+    private fun keepGoing() {
+        if (!app.settings.value.autoRadio) return
+        if (!player.playWhenReady || player.repeatMode != Player.REPEAT_MODE_OFF) return
+        if (player.mediaItemCount == 0 || player.hasNextMediaItem()) return
+        val item = player.currentMediaItem ?: return
+        val seed = item.toSong() ?: return
+        if (autoRadioFor == item.mediaId) return
+        autoRadioFor = item.mediaId
+        autoRadioJob?.cancel()
+        autoRadioJob = scope.launch {
+            val api = app.api() ?: return@launch
+            val size = app.settings.value.mixSize
+            val queued = (0 until player.mediaItemCount).mapNotNullTo(HashSet<String>()) { MediaIds.songIdOf(player.getMediaItemAt(it).mediaId) }
+            fun fresh(songs: List<Song>) = Blocklist.allowed(songs).filter { it.id !in queued }.distinctBy { it.id }
+            var picks = fresh(runCatching { api.similarSongs(seed.id, size) }.getOrDefault(emptyList()))
+            if (picks.isEmpty()) {
+                val artistId = seed.artistId
+                if (artistId != null) picks = fresh(runCatching { api.similarSongsByArtist(artistId, size) }.getOrDefault(emptyList()))
+            }
+            // Something else came up next meanwhile (you queued songs, or picked another): leave it.
+            if (picks.isEmpty() || player.currentMediaItem?.mediaId != item.mediaId || player.hasNextMediaItem()) return@launch
+            val items = picks.map { it.toMediaItem(api, app.bitrateFor(it), MediaIds.AUTOPLAY) }
+            // With shuffle on, new songs would be shuffled in among the ones already played: keep
+            // the order so far, then the radio in its own order.
+            val order = if (player.shuffleModeEnabled) shuffleOrderNow() else null
+            val first = player.mediaItemCount
+            player.addMediaItems(items)
+            if (order != null && order.size == first) {
+                player.setShuffleOrder(DefaultShuffleOrder((order + (first until first + items.size)).toIntArray(), System.nanoTime()))
+            }
+        }
+    }
+
+    /** The queue's indices in the order shuffle plays them. */
+    private fun shuffleOrderNow(): List<Int> {
+        val timeline = player.currentTimeline
+        val out = ArrayList<Int>(timeline.windowCount)
+        var i = timeline.getFirstWindowIndex(true)
+        while (i != C.INDEX_UNSET && out.size < timeline.windowCount) {
+            out += i
+            i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, true)
+        }
+        return out
     }
 
     /** Puts the last queue back (paused), so the app opens where you left off. */

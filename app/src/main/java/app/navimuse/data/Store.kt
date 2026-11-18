@@ -29,6 +29,8 @@ data class Settings(
     val mobileQuality: Quality = Quality.NORMAL,
     val scrobble: Boolean = true,
     val mixSize: Int = 50,
+    /** When the queue runs out (its last song, a single, a one-song album), add radio and keep going. */
+    val autoRadio: Boolean = true,
     /** Quality songs are saved at for offline play. */
     val downloadQuality: Quality = Quality.ORIGINAL,
     val downloadWifiOnly: Boolean = true,
@@ -113,6 +115,7 @@ class Store(context: Context) {
         mobileQuality = enumOr(prefs.getString("mobileQuality", null), Quality.NORMAL),
         scrobble = prefs.getBoolean("scrobble", true),
         mixSize = prefs.getInt("mixSize", 50),
+        autoRadio = prefs.getBoolean("autoRadio", true),
         downloadQuality = enumOr(prefs.getString("downloadQuality", null), Quality.ORIGINAL),
         downloadWifiOnly = prefs.getBoolean("downloadWifiOnly", true),
         autoDownloadFavourites = prefs.getBoolean("autoDownloadFavourites", false),
@@ -137,6 +140,7 @@ class Store(context: Context) {
             .putString("mobileQuality", s.mobileQuality.name)
             .putBoolean("scrobble", s.scrobble)
             .putInt("mixSize", s.mixSize)
+            .putBoolean("autoRadio", s.autoRadio)
             .putString("downloadQuality", s.downloadQuality.name)
             .putBoolean("downloadWifiOnly", s.downloadWifiOnly)
             .putBoolean("autoDownloadFavourites", s.autoDownloadFavourites)

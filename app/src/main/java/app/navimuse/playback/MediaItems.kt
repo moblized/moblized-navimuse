@@ -33,6 +33,21 @@ object MediaIds {
     fun songIdOf(mediaId: String): String? =
         if (mediaId.startsWith("s|")) mediaId.removePrefix("s|").substringBefore('|').takeIf { it.isNotEmpty() } else null
 
+    /** Context of songs the app added by itself to keep the music going (see PlaybackService.keepGoing). */
+    const val AUTOPLAY = "r"
+
+    /** A song added by autoplay radio, not picked by you. */
+    fun isAutoplay(mediaId: String): Boolean = contextOf(mediaId) == AUTOPLAY
+
+    /**
+     * Where "Add to queue" puts songs in a queue of [mediaIds] playing [current]: at the end of
+     * what you picked, so before any autoplay songs still to come, not after them.
+     */
+    fun addAt(mediaIds: List<String>, current: Int): Int {
+        for (i in (current + 1).coerceAtLeast(0) until mediaIds.size) if (isAutoplay(mediaIds[i])) return i
+        return mediaIds.size
+    }
+
     /** The list a song was picked from ("a|…", "p|…" or "f"), if any. */
     fun contextOf(mediaId: String): String? {
         if (!mediaId.startsWith("s|")) return null

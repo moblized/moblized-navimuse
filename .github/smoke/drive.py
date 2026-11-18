@@ -847,6 +847,40 @@ def missing_song_skips():
     print(f"  note: {note}", flush=True)
 
 
+def repeat_mode():
+    out = adb("shell", "dumpsys", "media_session")
+    return "one" if "Repeat one" in out else "all" if "Repeat all" in out else "off"
+
+
+def autoplay_radio():
+    """The WMA song from search is a queue of one: with repeat off, radio is added after it."""
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    open_player()
+    for _ in range(3):
+        if repeat_mode() == "off":
+            break
+        tap(desc="Repeat")
+        time.sleep(1.5)
+    assert repeat_mode() == "off", "couldn't turn repeat off"
+    tap(desc="Queue")
+    wait_for(text="Autoplay", timeout=40)
+    time.sleep(1)
+    shot("15d-autoplay-queue")
+    out = adb("shell", "dumpsys", "media_session")
+    sizes = [int(n) for n in re.findall(r"queueTitle=[^\n]*size=(\d+)", out)]
+    print(f"  queue sizes: {sizes}", flush=True)
+    assert any(n > 1 for n in sizes), f"nothing was added after the single: {sizes}"
+    back()  # closes the queue
+    # Repeat back on, as the later checks expect music to keep playing.
+    for _ in range(3):
+        if repeat_mode() == "all":
+            break
+        tap(desc="Repeat")
+        time.sleep(1.5)
+    back()  # closes the playing screen
+
+
 def background_playback():
     # Music should keep playing with the app in the background.
     out = adb("shell", "dumpsys", "media_session")
@@ -872,6 +906,7 @@ for name, fn in [
     ("Dolby badge on a Dolby album", dolby_album),
     ("a song whose file is gone on the server is skipped with a note", missing_song_skips),
     ("a song the phone can't play switches by itself", unplayable_switches),
+    ("autoplay radio after the last song", autoplay_radio),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
     ("auto cache: played songs kept, then cleared", auto_cache),

@@ -246,6 +246,12 @@ private fun PlaybackSettings(vm: AppViewModel) {
         )
     }
     SwitchRow(
+        "Autoplay radio",
+        "When the queue runs out (its last song, a single, or a one-song album), songs like it are added so the music keeps going. " +
+            "Off while repeat is on.",
+        settings.autoRadio,
+    ) { on -> vm.updateSettings { it.copy(autoRadio = on) } }
+    SwitchRow(
         "Play Dolby Atmos in its original format",
         "Atmos and surround songs stream and download untouched, even on mobile data, so your phone's Dolby decoder plays them. " +
             "If one won't play, it switches to a stereo copy by itself.",
