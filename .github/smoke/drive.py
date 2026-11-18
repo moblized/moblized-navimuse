@@ -781,7 +781,7 @@ def unplayable_switches():
     tap(text="Original")
     back()
     tap(text="Search")
-    box = first(lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
+    box = first(lambda: find(text="Vanished"), lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
     tap_node(box)
     adb("shell", "input", "keyevent", "123")  # end of the text
     for _ in range(12):
@@ -821,7 +821,7 @@ def missing_song_skips():
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
     time.sleep(2)
     tap(text="Search")
-    box = first(lambda: find(text="Odd"), lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
+    box = first(lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
     tap_node(box)
     adb("shell", "input", "keyevent", "123")  # end of the text
     for _ in range(12):
@@ -845,7 +845,6 @@ def missing_song_skips():
     assert "Vanished Track" in note, f"the note doesn't name the song: {note}"
     assert not switched, f"it tried other formats for a missing file: {switched}"
     print(f"  note: {note}", flush=True)
-    back()
 
 
 def background_playback():
@@ -871,8 +870,8 @@ for name, fn in [
     ("search", search),
     ("album and artist pages", album_and_artist),
     ("Dolby badge on a Dolby album", dolby_album),
-    ("a song the phone can't play switches by itself", unplayable_switches),
     ("a song whose file is gone on the server is skipped with a note", missing_song_skips),
+    ("a song the phone can't play switches by itself", unplayable_switches),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
     ("auto cache: played songs kept, then cleared", auto_cache),
