@@ -857,28 +857,39 @@ def autoplay_radio():
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
     time.sleep(2)
     open_player()
-    for _ in range(3):
-        if repeat_mode() == "off":
-            break
-        tap(desc="Repeat")
-        time.sleep(1.5)
-    assert repeat_mode() == "off", "couldn't turn repeat off"
-    tap(desc="Queue")
-    wait_for(text="Autoplay", timeout=40)
-    time.sleep(1)
-    shot("15d-autoplay-queue")
-    out = adb("shell", "dumpsys", "media_session")
-    sizes = [int(n) for n in re.findall(r"queueTitle=[^\n]*size=(\d+)", out)]
-    print(f"  queue sizes: {sizes}", flush=True)
-    assert any(n > 1 for n in sizes), f"nothing was added after the single: {sizes}"
-    back()  # closes the queue
-    # Repeat back on, as the later checks expect music to keep playing.
-    for _ in range(3):
-        if repeat_mode() == "all":
-            break
-        tap(desc="Repeat")
-        time.sleep(1.5)
-    back()  # closes the playing screen
+    try:
+        for _ in range(3):
+            if repeat_mode() == "off":
+                break
+            tap(desc="Repeat")
+            time.sleep(1.5)
+        assert repeat_mode() == "off", "couldn't turn repeat off"
+        tap(desc="Queue")
+        wait_for(text="Autoplay", timeout=40)
+        time.sleep(1)
+        shot("15d-autoplay-queue")
+        out = adb("shell", "dumpsys", "media_session")
+        sizes = [int(n) for n in re.findall(r"queueTitle=[^\n]*size=(\d+)", out)]
+        print(f"  queue sizes: {sizes}", flush=True)
+        assert any(n > 1 for n in sizes), f"nothing was added after the single: {sizes}"
+    finally:
+        # Whatever happened: repeat back on (later checks expect music to keep playing), and out
+        # of the queue and the playing screen, so the next checks start from the tabs.
+        for _ in range(3):
+            if repeat_mode() == "all":
+                break
+            n = find(desc="Repeat")
+            if n is None:
+                back()
+                time.sleep(1)
+                continue
+            tap_node(n)
+            time.sleep(1.5)
+        for _ in range(3):
+            if find(text="Home") is not None:
+                break
+            back()
+            time.sleep(1)
 
 
 def background_playback():

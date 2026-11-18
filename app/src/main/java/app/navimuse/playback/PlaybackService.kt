@@ -303,9 +303,8 @@ class PlaybackService : MediaLibraryService() {
     private var autoRadioJob: Job? = null
 
     /**
-     * When the song playing is the last one up and repeat is off, adds songs like it after it (an
-     * Instant Mix without the song itself, or its artist's radio if that finds nothing), so the
-     * music keeps going without a gap. They're marked as autoplay, so "Add to queue" puts your
+     * When the song playing is the last one up and repeat is off, adds songs like it after it (see
+     * [autoplayPicks]), so the music keeps going without a gap. They're marked as autoplay, so "Add to queue" puts your
      * songs before them.
      */
     private fun keepGoing() {
@@ -321,12 +320,7 @@ class PlaybackService : MediaLibraryService() {
             val api = app.api() ?: return@launch
             val size = app.settings.value.mixSize
             val queued = (0 until player.mediaItemCount).mapNotNullTo(HashSet<String>()) { MediaIds.songIdOf(player.getMediaItemAt(it).mediaId) }
-            fun fresh(songs: List<Song>) = Blocklist.allowed(songs).filter { it.id !in queued }.distinctBy { it.id }
-            var picks = fresh(runCatching { api.similarSongs(seed.id, size) }.getOrDefault(emptyList()))
-            if (picks.isEmpty()) {
-                val artistId = seed.artistId
-                if (artistId != null) picks = fresh(runCatching { api.similarSongsByArtist(artistId, size) }.getOrDefault(emptyList()))
-            }
+            val picks = autoplayPicks(api, seed, size, queued)
             // Something else came up next meanwhile (you queued songs, or picked another): leave it.
             if (picks.isEmpty() || player.currentMediaItem?.mediaId != item.mediaId || player.hasNextMediaItem()) return@launch
             val items = picks.map { it.toMediaItem(api, app.bitrateFor(it), MediaIds.AUTOPLAY) }
@@ -339,6 +333,22 @@ class PlaybackService : MediaLibraryService() {
                 player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder((order + (first until first + items.size)).toIntArray(), System.nanoTime()))
             }
         }
+    }
+
+    /**
+     * Songs to keep going with after [seed], none of them [queued] or blocked: songs that sound
+     * like it (AudioMuse-AI's Instant Mix), else its artist's radio, else songs from its genre,
+     * else anything from your library, so the music never just stops.
+     */
+    private suspend fun autoplayPicks(api: SubsonicClient, seed: Song, size: Int, queued: Set<String>): List<Song> {
+        suspend fun from(source: suspend () -> List<Song>): List<Song> =
+            Blocklist.allowed(runCatching { source() }.getOrDefault(emptyList())).filter { it.id !in queued }.distinctBy { it.id }
+        from { api.similarSongs(seed.id, size) }.let { if (it.isNotEmpty()) return it }
+        seed.artistId?.let { artistId -> from { api.similarSongsByArtist(artistId, size) }.let { if (it.isNotEmpty()) return it } }
+        // The queue's copy of a song doesn't carry its genre: ask for it.
+        val genre = seed.genre ?: runCatching { api.song(seed.id)?.genre }.getOrNull()
+        if (!genre.isNullOrBlank()) from { api.randomSongs(size, genre) }.let { if (it.isNotEmpty()) return it }
+        return from { api.randomSongs(size) }
     }
 
     /** The queue's indices in the order shuffle plays them. */
