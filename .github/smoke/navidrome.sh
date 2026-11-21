@@ -38,6 +38,14 @@ ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=330:duration=40" \
   -metadata album="Odd Album" -metadata track=1 -metadata date=2022 -metadata genre=Odd \
   -c:a wmav2 -b:a 128k "music/Odd Artist/Odd Album/01.wma"
 
+# A song whose file disappears after the scan (moved or deleted on the server), so Navidrome still
+# lists it but can't open it: the app has to say so and move on, not try every format.
+mkdir -p "music/Gone Artist/Gone Album"
+ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=520:duration=30" \
+  -metadata title="Vanished Track" -metadata artist="Gone Artist" -metadata album_artist="Gone Artist" \
+  -metadata album="Gone Album" -metadata track=1 -metadata date=2021 -metadata genre=Gone \
+  -c:a libmp3lame -b:a 128k "music/Gone Artist/Gone Album/01.mp3"
+
 # A Dolby Digital Plus 5.1 album in .m4a, like Atmos music: Navidrome can't tell it from AAC,
 # so the app has to look inside the file to show its Dolby badge.
 mkdir -p "music/Surround Artist/Dolby Album"
@@ -51,7 +59,7 @@ done
 
 docker run -d --name navidrome -p 4533:4533 \
   -v "$PWD/music:/music:ro" -v "$PWD/nd-data:/data" \
-  -e ND_LOGLEVEL=debug -e ND_SCANNER_SCHEDULE=0 \
+  -e ND_LOGLEVEL=debug -e ND_SCANNER_SCHEDULE=0 -e ND_SCANNER_WATCHERWAIT=0 \
   deluan/navidrome:latest
 
 for _ in $(seq 90); do curl -fs "$ND/ping" >/dev/null && break; sleep 2; done
@@ -66,6 +74,16 @@ for _ in $(seq 90); do
   sleep 2
 done
 echo "albums: $n"
+
+# Once Navidrome has the vanishing song, take its file away (the watcher is off, so it doesn't notice).
+for _ in $(seq 60); do
+  gone=$(curl -fs "$ND/rest/search3?query=Vanished&songCount=5&$AUTH" | jq -r '.["subsonic-response"].searchResult3.song[0].id // empty' || true)
+  [ -n "$gone" ] && break
+  sleep 2
+done
+echo "vanishing song: ${gone:-not found}"
+rm -f "music/Gone Artist/Gone Album/01.mp3"
+curl -s "$ND/rest/stream?id=$gone&format=raw&$AUTH" | head -c 300; echo
 
 songs=$(curl -fs "$ND/rest/search3?query=Song&songCount=10&$AUTH" | jq -r '.["subsonic-response"].searchResult3.song[].id')
 q=""

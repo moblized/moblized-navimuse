@@ -12,14 +12,18 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import app.navimuse.BuildConfig
 import app.navimuse.NaviMuseApp
 import app.navimuse.downloads.Downloads
+import com.google.common.base.Predicate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,8 +39,29 @@ import kotlinx.coroutines.launch
  */
 @OptIn(UnstableApi::class)
 object Streaming {
+    /**
+     * The server, for playing and downloading. An answer that can't be audio (a Navidrome error
+     * in JSON or XML, a proxy's web page) is refused at once, so it's never cached or downloaded
+     * as if it were the song; the player then asks the server what went wrong (see StreamCheck).
+     */
     fun http(app: NaviMuseApp): DataSource.Factory =
-        OkHttpDataSource.Factory(app.http).setUserAgent("NaviMuse/${BuildConfig.VERSION_NAME}")
+        OkHttpDataSource.Factory(app.http)
+            .setUserAgent("NaviMuse/${BuildConfig.VERSION_NAME}")
+            .setContentTypePredicate(Predicate<String> { !StreamCheck.isErrorContentType(it) })
+
+    /**
+     * Loading retries: a refusal (an error instead of audio, or a 4xx answer) won't change by
+     * asking again a second later, so the player hears about it straight away instead of after
+     * three more tries. Dropped connections and server hiccups (5xx) are still retried.
+     */
+    fun loadErrors(): LoadErrorHandlingPolicy = object : DefaultLoadErrorHandlingPolicy() {
+        override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
+            val e = info.exception
+            if (e is HttpDataSource.InvalidContentTypeException) return C.TIME_UNSET
+            if (e is HttpDataSource.InvalidResponseCodeException && e.responseCode in 400..499 && e.responseCode != 429) return C.TIME_UNSET
+            return super.getRetryDelayMsFor(info)
+        }
+    }
 
     /** Reads the stream cache, filling it from the server. */
     fun streamCache(app: NaviMuseApp): CacheDataSource.Factory =

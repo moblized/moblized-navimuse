@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -233,6 +234,19 @@ fun MixesScreen(vm: AppViewModel) {
                         ActionPill("Pick a song", Icons.Filled.Search) { picking = Pick.MIX_SEED }
                         ActionPill("Surprise me", Icons.Filled.Shuffle) { ui.navigate(Route.MixPage(MixSeed.Surprise())) }
                     }
+                }
+            }
+
+            // Playlist from a title
+            item { SectionHeader("Playlist from a title") }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Name a playlist in plain words, like \"Gym\" or \"Rainy Sunday\", and get songs for it from your library.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    ActionPill("New playlist", Icons.Filled.Add, primary = true) { ui.newPlaylistFromTitle() }
                 }
             }
 

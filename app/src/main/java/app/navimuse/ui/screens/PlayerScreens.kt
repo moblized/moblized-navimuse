@@ -447,7 +447,10 @@ fun NowPlayingScreen(vm: AppViewModel, onClose: () -> Unit) {
                 // Bottom: queue, where it's playing from, share, more.
                 Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RoundButton(Icons.Filled.Menu, "Queue") { showQueue = true }
-                    val from = source ?: song.albumId?.let { AppViewModel.PlaySource(song.album, Route.AlbumPage(it)) }
+                    val from = when {
+                        state.current?.autoplay == true -> AppViewModel.PlaySource("Autoplay radio")
+                        else -> source ?: song.albumId?.let { AppViewModel.PlaySource(song.album, Route.AlbumPage(it)) }
+                    }
                     if (!look.showPlayingFrom) Spacer(Modifier.weight(1f)) else Column(
                         Modifier
                             .weight(1f)
@@ -1027,9 +1030,24 @@ fun QueueSheet(vm: AppViewModel, onDismiss: () -> Unit) {
         }
         HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
-            itemsIndexed(state.queue, key = { _, e -> "${e.index}-${e.song.id}" }) { _, entry ->
+            itemsIndexed(state.queue, key = { _, e -> "${e.index}-${e.song.id}" }) { pos, entry ->
                 val i = entry.index
                 val isCurrent = i == currentIndex
+                // Where autoplay takes over: songs like what you played, added so the music keeps going.
+                if (entry.autoplay && state.queue.getOrNull(pos - 1)?.autoplay != true) {
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Radio, null, tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Autoplay", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Songs like what you've been playing, so the music keeps going. Turn it off in Settings → Playback.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
                 Row(
                     Modifier
                         .fillMaxWidth()
