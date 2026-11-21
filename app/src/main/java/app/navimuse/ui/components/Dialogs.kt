@@ -1,5 +1,12 @@
 package app.navimuse.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -26,6 +33,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
@@ -114,6 +123,68 @@ fun SavePlaylistDialog(songCount: Int, suggestedName: String, onDismiss: () -> U
         },
         confirmButton = {
             TextButton(onClick = { onSave(name) }, enabled = name.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Ideas for a playlist title, in the plain words it understands. */
+private val titleIdeas = listOf("Gym", "Rainy Sunday", "Late night drive", "Chill", "Road trip", "Party", "Focus")
+
+/**
+ * Name a new playlist, simply ("Gym", "Rainy Sunday", "Late night drive"), and the app finds
+ * songs for it from that title, like Tidal. Nothing is saved until you press Save.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NewPlaylistDialog(onDismiss: () -> Unit, onFind: (String) -> Unit) {
+    var title by remember { mutableStateOf("") }
+    val risky = PlaylistNames.isAudioMuseManaged(title)
+    // Ready to type straight away.
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(150)
+        runCatching { focus.requestFocus() }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New playlist") },
+        text = {
+            Column {
+                Text(
+                    "Name it in a few plain words and NaviMuse fills it with songs from your library.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Playlist name") },
+                    placeholder = { Text("e.g. Rainy Sunday") },
+                    singleLine = true,
+                    isError = risky,
+                    supportingText = if (risky) {
+                        { Text("AudioMuse-AI deletes playlists ending in _automatic. It'll be saved as \"${PlaylistNames.safe(title)}\".") }
+                    } else {
+                        null
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { if (title.isNotBlank()) onFind(title) }),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).focusRequester(focus),
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    titleIdeas.forEach { idea ->
+                        SuggestionChip(onClick = { title = idea }, label = { Text(idea) })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onFind(title) }, enabled = title.isNotBlank()) { Text("Find songs") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

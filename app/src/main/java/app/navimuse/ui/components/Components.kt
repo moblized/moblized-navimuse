@@ -134,6 +134,8 @@ class UiActions(
     val selectTab: (app.navimuse.ui.Tab) -> Unit = {},
     /** Opens the playing screen (when something is playing). */
     val openPlayer: () -> Unit = {},
+    /** Asks for a title and makes a new playlist from it (see TitlePlaylistScreen). */
+    val newPlaylistFromTitle: () -> Unit = {},
 )
 
 val LocalUi = staticCompositionLocalOf<UiActions> { error("UiActions not provided") }

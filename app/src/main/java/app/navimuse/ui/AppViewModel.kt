@@ -13,6 +13,7 @@ import app.navimuse.playback.AudioCache
 import app.navimuse.net.Credit
 import app.navimuse.data.Look
 import app.navimuse.data.Mood
+import app.navimuse.data.TitleWords
 import app.navimuse.data.Settings
 import app.navimuse.downloads.Downloads
 import app.navimuse.net.Album
@@ -347,6 +348,74 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             chosen.map { g -> async { runCatching { api().randomSongs(20, genre = g) }.getOrDefault(emptyList()) } }.awaitAll()
         }.flatten().distinctBy { it.id }.shuffled()
         return MoodMix(Blocklist.allowed(songs).take(60), "From your genres: " + chosen.joinToString(", "))
+    }
+
+    /** Songs for a playlist made from its title, and in plain words where they came from. */
+    data class TitleMix(val songs: List<Song>, val note: String)
+
+    /**
+     * Fills a new playlist from its title alone, like Tidal does: "Gym", "Rainy Sunday", "Late
+     * night drive", "Skillet and friends". Artists the title names bring their radio. The rest
+     * comes from AudioMuse-AI's mood search, given the title as it is, when it's connected;
+     * otherwise from the genres the title names or the moods its words point to.
+     */
+    suspend fun titleMix(title: String, size: Int = 50): TitleMix = coroutineScope {
+        val t = title.trim()
+        // Artists named in the title: look each word up, then keep the names the title really says.
+        val lookups = TitleWords.words(t).trim().split(" ").filter { it.length >= 3 }.distinct().take(5)
+        val found = lookups.map { w ->
+            async { runCatching { api().search(w, songs = 0, albums = 0, artists = 6).artists }.getOrDefault(emptyList()) }
+        }.awaitAll().flatten().distinctBy { it.id }
+        val artists = TitleWords.artistsIn(t, found.map { it.name }).mapNotNull { n -> found.firstOrNull { it.name == n } }.take(3)
+        val fromArtists = artists.map { a ->
+            async { runCatching { api().similarSongsByArtist(a.id, 25) }.getOrDefault(emptyList()) }
+        }
+
+        // The sound of it: AudioMuse-AI's mood search reads the title as it is.
+        var how: String? = null
+        var bySound = emptyList<Song>()
+        app.audioMuse()?.let { am ->
+            try {
+                val hits = am.moodSearch(t, 120).shuffled().take(size)
+                bySound = api().songs(hits.map { it.itemId })
+                if (bySound.isNotEmpty()) how = "picked by how they sound, with AudioMuse-AI"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Read the words instead, below.
+            }
+        }
+        // Without it: genres the title names, then genres that fit the moods its words point to.
+        var byGenre = emptyList<Song>()
+        if (bySound.isEmpty()) {
+            val genres = runCatching { api().genres().filter { it.songCount > 0 }.map { it.name } }.getOrDefault(emptyList())
+            val named = TitleWords.genresIn(t, genres)
+            val moods = TitleWords.moodsIn(t)
+            val fitting = (named + moods.flatMap { Mood.matchGenres(it, genres).take(4) }).distinct().take(6)
+            if (fitting.isNotEmpty()) {
+                byGenre = fitting.map { g -> async { runCatching { api().randomSongs(20, genre = g) }.getOrDefault(emptyList()) } }
+                    .awaitAll().flatten()
+                how = when {
+                    moods.isNotEmpty() && named.isEmpty() -> "for ${moods.take(2).joinToString(" and ") { it.label.lowercase() }}, from your genres: ${fitting.joinToString(", ")}"
+                    else -> "from your genres: ${fitting.joinToString(", ")}"
+                }
+            }
+        }
+        val radio = fromArtists.awaitAll().flatten()
+        // The artists' songs and the rest, mixed together.
+        val songs = Blocklist.allowed((radio + bySound + byGenre).distinctBy { it.id }.shuffled()).take(size)
+        val parts = listOfNotNull(
+            artists.takeIf { it.isNotEmpty() }?.let { "built around " + it.joinToString(" and ") { a -> a.name } },
+            how,
+        )
+        val note = when {
+            songs.isEmpty() && app.audioMuse() == null ->
+                "Nothing in your library matched \"$t\". Try a mood (chill, gym, late night), a genre or an artist, " +
+                    "or connect AudioMuse-AI in Settings so any words work."
+            songs.isEmpty() -> "Nothing in your library matched \"$t\". Try other words: a mood, a genre or an artist."
+            else -> "${songs.size} songs " + parts.joinToString(", ") + "."
+        }
+        TitleMix(songs, note)
     }
 
     suspend fun searchSongs(query: String): List<Song> = api().search(query, songs = 25, albums = 0, artists = 0).songs

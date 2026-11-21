@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Album
@@ -215,6 +216,15 @@ fun CollectionPlaylistsScreen(vm: AppViewModel, onBack: () -> Unit) {
         LoadBox(loaded) { playlists ->
             val automatic = playlists.filter { it.isAudioMuseManaged }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                item {
+                    // Name it simply and the app finds the songs (see TitlePlaylistScreen).
+                    ActionPill(
+                        "New playlist",
+                        Icons.Filled.Add,
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
+                        primary = true,
+                    ) { ui.newPlaylistFromTitle() }
+                }
                 if (automatic.isNotEmpty()) {
                     item {
                         InfoCard(
@@ -232,7 +242,7 @@ fun CollectionPlaylistsScreen(vm: AppViewModel, onBack: () -> Unit) {
                         )
                     }
                 }
-                if (playlists.isEmpty()) item { EmptyBox("No playlists yet. Save a mix or your queue to make one.") }
+                if (playlists.isEmpty()) item { EmptyBox("No playlists yet. Tap New playlist and give it a name, or save a mix or your queue.") }
                 items(playlists, key = { it.id }) { p -> PlaylistRow(p) { ui.navigate(Route.PlaylistPage(p.id)) } }
             }
         }

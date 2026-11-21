@@ -260,6 +260,31 @@ def keep_copy():
     back()
 
 
+def playlist_from_title():
+    """New playlist, named in plain words: songs come from the library, saved under that name."""
+    tap(text="New playlist")
+    wait_for(text="Find songs")
+    time.sleep(1)
+    type_text("Chill ambient", shows="Chill ambient")
+    adb("shell", "input", "keyevent", "111")  # keyboard away
+    time.sleep(1)
+    tap(text="Find songs")
+    wait_for(text="Save playlist", timeout=40)
+    time.sleep(1)
+    shot("05b-playlist-from-title")
+    tap(text="Save playlist")
+    saved = None
+    for _ in range(15):
+        saved = next((p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Chill ambient"), None)
+        if saved:
+            break
+        time.sleep(1)
+    assert saved, "no playlist named Chill ambient"
+    assert saved.get("songCount", 0) > 0, f"the new playlist is empty: {saved}"
+    print(f"  saved: {saved['name']} with {saved['songCount']} songs", flush=True)
+    wait_for(text="Road trip")
+
+
 def play():
     tap(text="Road trip")
     wait_for(text="Road trip")
@@ -903,6 +928,7 @@ for name, fn in [
     ("log in", login),
     ("collection", library),
     ("keep a copy of an _automatic playlist", keep_copy),
+    ("a new playlist filled from its title", playlist_from_title),
     ("play a song + now-playing report", play),
     ("now playing screen and queue", now_playing),
     ("Android Auto buttons: favourite, shuffle, repeat, radio", auto_buttons),

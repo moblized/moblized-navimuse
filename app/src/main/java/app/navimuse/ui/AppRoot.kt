@@ -72,6 +72,7 @@ import app.navimuse.net.AlbumListType
 import app.navimuse.net.Song
 import app.navimuse.ui.components.AddToPlaylistDialog
 import app.navimuse.ui.components.LocalUi
+import app.navimuse.ui.components.NewPlaylistDialog
 import app.navimuse.ui.components.SavePlaylistDialog
 import app.navimuse.ui.components.UiActions
 import app.navimuse.ui.screens.AlbumScreen
@@ -84,6 +85,7 @@ import app.navimuse.ui.screens.CollectionScreen
 import app.navimuse.ui.screens.DownloadsScreen
 import app.navimuse.ui.screens.FavouritesScreen
 import app.navimuse.ui.screens.GenreScreen
+import app.navimuse.ui.screens.TitlePlaylistScreen
 import app.navimuse.ui.screens.MixScreen
 import app.navimuse.ui.screens.MoodScreen
 import app.navimuse.ui.screens.HomeScreen
@@ -115,6 +117,8 @@ sealed interface Route {
     data class GenrePage(val name: String) : Route
     data class MoodPage(val mood: app.navimuse.data.Mood) : Route
     data class MixPage(val seed: MixSeed) : Route
+    /** A new playlist filled from its [title] alone ("Gym", "Rainy Sunday"), before it's saved. */
+    data class TitlePlaylist(val title: String) : Route
     data object Albums : Route
     data object Artists : Route
     data object Playlists : Route
@@ -150,6 +154,7 @@ fun AppRoot(vm: AppViewModel) {
     var showPlayer by remember { mutableStateOf(false) }
     var playlistPickFor by remember { mutableStateOf<List<Song>?>(null) }
     var saveFor by remember { mutableStateOf<Pair<List<Song>, String>?>(null) }
+    var namingNew by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val saveable = rememberSaveableStateHolder()
     // A page's scroll position is kept while it's open (so Back returns to where you were),
@@ -209,6 +214,7 @@ fun AppRoot(vm: AppViewModel) {
                 clearPages()
             },
             openPlayer = { showPlayer = true },
+            newPlaylistFromTitle = { namingNew = true },
         )
     }
 
@@ -266,6 +272,7 @@ fun AppRoot(vm: AppViewModel) {
                                 is Route.GenrePage -> GenreScreen(vm, top.name, onBack)
                                 is Route.MoodPage -> MoodScreen(vm, top.mood, onBack)
                                 is Route.MixPage -> MixScreen(vm, top.seed, onBack)
+                                is Route.TitlePlaylist -> TitlePlaylistScreen(vm, top.title, onBack)
                                 Route.Albums -> CollectionAlbumsScreen(vm, onBack)
                                 Route.Artists -> CollectionArtistsScreen(vm, onBack)
                                 Route.Playlists -> CollectionPlaylistsScreen(vm, onBack)
@@ -323,6 +330,15 @@ fun AppRoot(vm: AppViewModel) {
                 onNew = {
                     playlistPickFor = null
                     saveFor = songs to ""
+                },
+            )
+        }
+        if (namingNew) {
+            NewPlaylistDialog(
+                onDismiss = { namingNew = false },
+                onFind = { title ->
+                    namingNew = false
+                    actions.navigate(Route.TitlePlaylist(title.trim()))
                 },
             )
         }
