@@ -134,6 +134,22 @@ def type_text(s, shows=None):
         print(f"  still no {shows!r} on screen", flush=True)
 
 
+def fill(label, value, shows, tries=3):
+    """Types [value] into the field labelled [label], starting it over (tap, clear, retype) if
+    the emulator's keyboard drops the text, which it sometimes does on a fresh boot."""
+    for attempt in range(tries):
+        tap(text=label) if find(text=label) is not None else tap(text=shows, contains=True)
+        time.sleep(0.5 + attempt)
+        if attempt:
+            adb("shell", "input", "keycombination", "KEYCODE_CTRL_LEFT", "KEYCODE_A")
+            adb("shell", "input", "keyevent", "KEYCODE_DEL")
+        type_text(value, shows=shows)
+        if find(text=shows, contains=True) is not None:
+            return
+        print(f"  {label}: typing didn't take, starting the field over", flush=True)
+    raise AssertionError(f"couldn't type into {label}")
+
+
 def press_keys(s):
     for ch in s:
         if ch.isalpha():
@@ -217,10 +233,8 @@ def login():
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity", check=True)
     wait_for(text="Connect", timeout=60)
     shot("01-login")
-    tap(text="Navidrome address")
-    type_text("http://10.0.2.2:4533", shows="10.0.2.2")
-    tap(text="Username")
-    type_text("admin", shows="admin")
+    fill("Navidrome address", "http://10.0.2.2:4533", shows="10.0.2.2")
+    fill("Username", "admin", shows="admin")
     tap(text="Password")
     type_text("secret123")
     adb("shell", "input", "keyevent", "66")  # Enter = Go on the password field
