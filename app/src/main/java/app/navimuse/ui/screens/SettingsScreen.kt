@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
@@ -240,6 +241,7 @@ private fun PlaybackSettings(vm: AppViewModel) {
         modifier = Modifier.padding(horizontal = 16.dp),
     )
     SwitchedSongsRow()
+    GhostSongsRow()
     Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text("Instant Mix length: ${settings.mixSize} songs", style = MaterialTheme.typography.bodyLarge)
         Slider(
@@ -293,6 +295,25 @@ private fun SwitchedSongsRow() {
                 count = 0
             }) { Text("Forget") }
         },
+    )
+}
+
+/** Ghost songs: how many, and the way to the page that finds and lists them. */
+@Composable
+private fun GhostSongsRow() {
+    val ui = LocalUi.current
+    val ghosts by app.navimuse.data.GhostSongs.all.collectAsState()
+    ListItem(
+        headlineContent = { Text(if (ghosts.isEmpty()) "Ghost songs" else "Ghost songs (${ghosts.size})") },
+        supportingContent = {
+            Text(
+                if (ghosts.isEmpty()) "Songs Navidrome lists but can't play. Look through your library for them."
+                else "Navidrome lists them but can't play them, so they're left out of mixes and queues.",
+            )
+        },
+        leadingContent = { Icon(Icons.Filled.CloudOff, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
+        modifier = Modifier.clickable { ui.navigate(Route.GhostSongs) },
     )
 }
 

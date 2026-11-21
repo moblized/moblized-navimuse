@@ -86,6 +86,7 @@ import app.navimuse.ui.screens.CollectionScreen
 import app.navimuse.ui.screens.DownloadsScreen
 import app.navimuse.ui.screens.FavouritesScreen
 import app.navimuse.ui.screens.GenreScreen
+import app.navimuse.ui.screens.GhostSongsScreen
 import app.navimuse.ui.screens.ImportScreen
 import app.navimuse.ui.screens.TitlePlaylistScreen
 import app.navimuse.ui.screens.MixScreen
@@ -123,6 +124,8 @@ sealed interface Route {
     data class TitlePlaylist(val title: String) : Route
     /** An import of a TIDAL playlist or a song list, staged in the view model under [key]. */
     data class ImportPage(val key: String) : Route
+    /** Songs Navidrome lists but can't play (see GhostSongs). */
+    data object GhostSongs : Route
     data object Albums : Route
     data object Artists : Route
     data object Playlists : Route
@@ -281,6 +284,7 @@ fun AppRoot(vm: AppViewModel) {
                                 is Route.MixPage -> MixScreen(vm, top.seed, onBack)
                                 is Route.TitlePlaylist -> TitlePlaylistScreen(vm, top.title, onBack)
                                 is Route.ImportPage -> ImportScreen(vm, top.key, onBack)
+                                Route.GhostSongs -> GhostSongsScreen(vm, onBack)
                                 Route.Albums -> CollectionAlbumsScreen(vm, onBack)
                                 Route.Artists -> CollectionArtistsScreen(vm, onBack)
                                 Route.Playlists -> CollectionPlaylistsScreen(vm, onBack)

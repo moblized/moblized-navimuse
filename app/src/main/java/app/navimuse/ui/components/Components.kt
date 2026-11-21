@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -394,6 +395,9 @@ fun SongRow(
     val ui = LocalUi.current
     val downloads by ui.vm.downloads.collectAsState()
     val saved = downloads[song.id]?.state == Downloads.State.DONE
+    // A ghost song (see GhostSongs): listed by Navidrome, but it won't play.
+    val ghosts by app.navimuse.data.GhostSongs.all.collectAsState()
+    val ghost = song.id in ghosts
     // Swipe right to add the song to the queue (can be turned off in Customize).
     val swipe = LocalLook.current.swipeToQueue
     val drag = remember { Animatable(0f) }
@@ -471,11 +475,20 @@ fun SongRow(
                 Text(
                     song.title,
                     style = MaterialTheme.typography.titleSmall,
-                    color = if (isCurrent) MaterialTheme.colorScheme.accent else MaterialTheme.colorScheme.onSurface,
+                    color = when {
+                        isCurrent -> MaterialTheme.colorScheme.accent
+                        ghost -> muted
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ghost) {
+                        Icon(Icons.Filled.CloudOff, "Won't play", tint = muted, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Won't play · ", style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 1)
+                    }
                     if (saved) {
                         Icon(Icons.Filled.OfflinePin, "Downloaded", tint = MaterialTheme.colorScheme.accent, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))

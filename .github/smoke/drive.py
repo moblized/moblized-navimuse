@@ -917,6 +917,30 @@ def missing_song_skips():
     print(f"  note: {note}", flush=True)
 
 
+def ghost_songs():
+    """The song whose file is gone is now a ghost song: listed in Settings, and found again by
+    looking through the whole library after being taken off the list."""
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Collection")
+    tap(desc="Settings")
+    settings_tab("Playback")
+    tap_node(scroll_to("Ghost songs (1)"))
+    wait_for(text="Vanished Track")
+    time.sleep(1)
+    shot("15e-ghost-songs")
+    tap(text="Not a ghost")
+    wait_for(text="No ghost songs", contains=True)
+    tap(text="Look for them")
+    wait_for(text="Checked all", contains=True, timeout=120)
+    status = find(text="Checked all", contains=True).get("text", "")
+    print(f"  {status}", flush=True)
+    assert find(text="Vanished Track") is not None, f"looking through the library didn't find the ghost song: {status}"
+    shot("15f-ghost-scan")
+    back()  # Settings
+    back()  # Collection
+
+
 def repeat_mode():
     out = adb("shell", "dumpsys", "media_session")
     return "one" if "Repeat one" in out else "all" if "Repeat all" in out else "off"
@@ -988,6 +1012,7 @@ for name, fn in [
     ("album and artist pages", album_and_artist),
     ("Dolby badge on a Dolby album", dolby_album),
     ("a song whose file is gone on the server is skipped with a note", missing_song_skips),
+    ("ghost songs: listed, and found by looking through the library", ghost_songs),
     ("a song the phone can't play switches by itself", unplayable_switches),
     ("autoplay radio after the last song", autoplay_radio),
     ("safety, settings, dark mode + dark icon", settings_and_dark),

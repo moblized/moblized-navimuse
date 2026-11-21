@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import app.navimuse.BuildConfig
 import app.navimuse.MainActivity
 import app.navimuse.data.Blocklist
+import app.navimuse.data.GhostSongs
 import app.navimuse.NaviMuseApp
 import app.navimuse.net.AlbumListType
 import app.navimuse.net.Song
@@ -140,6 +141,16 @@ class PlaybackService : MediaLibraryService() {
                 )
             }
         })
+        // Ghost songs (see GhostSongs) coming up in a queue are passed over without trying them.
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val id = mediaItem?.mediaId?.let { MediaIds.songIdOf(it) } ?: return
+                if (!GhostSongs.isGhost(id) || !player.hasNextMediaItem() || skippedInARow >= player.mediaItemCount) return
+                skippedInARow++
+                player.seekToNextMediaItem()
+            }
+        })
+
         // Autoplay radio: when the last song up starts (the end of the queue, a single, a one-song
         // album), songs like it are added after it, so the music keeps going.
         player.addListener(object : Player.Listener {
@@ -250,6 +261,8 @@ class PlaybackService : MediaLibraryService() {
                     // The server's trouble, not the phone's: nothing to learn about formats.
                     Convert.giveUp(song.id)
                     val songOnly = check !is StreamCheck.Refused || check.songOnly
+                    // A ghost song: Navidrome lists it but can't play it. Kept out of the way from now on.
+                    if (songOnly) GhostSongs.mark(song, SongTrouble.reason(check))
                     if (songOnly && player.hasNextMediaItem() && skippedInARow < player.mediaItemCount) {
                         skippedInARow++
                         app.player.notice(SongTrouble.notice(song.title, check, skipped = true))
