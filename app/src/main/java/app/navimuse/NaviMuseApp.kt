@@ -52,6 +52,14 @@ class NaviMuseApp : Application() {
 
     private val _audioMuse = MutableStateFlow<AudioMuseLogin?>(null)
     val audioMuseLogin: StateFlow<AudioMuseLogin?> = _audioMuse.asStateFlow()
+    private val _tidal by lazy { MutableStateFlow(store.tidal()) }
+    /** Your TIDAL developer app's Client ID and secret, for importing public TIDAL playlists. */
+    val tidalLogin: StateFlow<app.navimuse.net.TidalLogin?> by lazy { _tidal.asStateFlow() }
+
+    fun saveTidal(login: app.navimuse.net.TidalLogin?) {
+        store.saveTidal(login)
+        _tidal.value = store.tidal()
+    }
 
     private val _serverInfo = MutableStateFlow<ServerInfo?>(null)
     val serverInfo: StateFlow<ServerInfo?> = _serverInfo.asStateFlow()

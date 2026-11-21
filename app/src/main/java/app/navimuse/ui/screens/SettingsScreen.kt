@@ -202,6 +202,10 @@ private fun GeneralSettings(vm: AppViewModel, onLogOut: () -> Unit) {
     AudioMuseSettings(vm)
 
     HorizontalDivider()
+    Group("TIDAL (optional)")
+    TidalSettings(vm)
+
+    HorizontalDivider()
     Group("Updates")
     SwitchRow(
         "Update automatically",
@@ -560,6 +564,55 @@ private fun QualityPicker(title: String, value: Quality, onPick: (Quality) -> Un
         },
         modifier = Modifier.clickable { expanded = true },
     )
+}
+
+/**
+ * Your own TIDAL developer app, so links to public TIDAL playlists can be imported. TIDAL's API
+ * needs an app of your own: free, made in a minute at developer.tidal.com.
+ */
+@Composable
+private fun TidalSettings(vm: AppViewModel) {
+    val current by vm.tidalLogin.collectAsState()
+    var clientId by remember(current) { mutableStateOf(current?.clientId ?: "") }
+    var secret by remember(current) { mutableStateOf(current?.clientSecret ?: "") }
+    var showSecret by remember { mutableStateOf(false) }
+    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "To import TIDAL playlists from a link: sign in at developer.tidal.com, open the Dashboard, create an app (any name), " +
+                "and copy its Client ID and Client Secret here. It reads public playlists only and never touches your TIDAL account. " +
+                "Without it you can still import by pasting the songs or picking a CSV file.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = clientId,
+            onValueChange = { clientId = it },
+            label = { Text("Client ID") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = secret,
+            onValueChange = { secret = it },
+            label = { Text("Client Secret") },
+            singleLine = true,
+            visualTransformation = if (showSecret) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { showSecret = !showSecret }) {
+                    Icon(if (showSecret) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, if (showSecret) "Hide" else "Show")
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = { vm.saveTidal(app.navimuse.net.TidalLogin(clientId.trim(), secret.trim())) },
+                enabled = clientId.isNotBlank() && secret.isNotBlank(),
+            ) { Text("Save") }
+            if (current != null) OutlinedButton(onClick = { vm.saveTidal(null) }) { Text("Remove") }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
 }
 
 @Composable

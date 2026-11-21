@@ -285,6 +285,37 @@ def playlist_from_title():
     wait_for(text="Road trip")
 
 
+def import_list():
+    """Import a pasted song list: the song the library has is found, the other is listed as missing."""
+    tap(text="Import")
+    wait_for(text="Import a playlist")
+    tap(text="TIDAL link or songs")
+    time.sleep(1)
+    type_text("Test Artist - Sine Song 1", shows="Sine Song 1")
+    adb("shell", "input", "keyevent", "66")  # new line
+    type_text("Nobody - Not A Real Song")
+    adb("shell", "input", "keyevent", "111")  # keyboard away
+    time.sleep(1)
+    tap(text="Import", last=True)
+    wait_for(text="Not in your library (1)", timeout=40)
+    assert find(text="Sine Song 1") is not None, "the song the library has wasn't found"
+    time.sleep(1)
+    shot("05c-import")
+    tap(text="Save playlist")
+    wait_for(text="Save as playlist")
+    tap(text="Save")
+    saved = None
+    for _ in range(15):
+        saved = next((p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Imported playlist"), None)
+        if saved:
+            break
+        time.sleep(1)
+    assert saved, "no playlist named Imported playlist"
+    assert saved.get("songCount") == 1, f"expected the 1 song found: {saved}"
+    back()
+    wait_for(text="Road trip")
+
+
 def play():
     tap(text="Road trip")
     wait_for(text="Road trip")
@@ -929,6 +960,7 @@ for name, fn in [
     ("collection", library),
     ("keep a copy of an _automatic playlist", keep_copy),
     ("a new playlist filled from its title", playlist_from_title),
+    ("import a pasted song list", import_list),
     ("play a song + now-playing report", play),
     ("now playing screen and queue", now_playing),
     ("Android Auto buttons: favourite, shuffle, repeat, radio", auto_buttons),

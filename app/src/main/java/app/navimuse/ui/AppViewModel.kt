@@ -13,7 +13,13 @@ import app.navimuse.playback.AudioCache
 import app.navimuse.net.Credit
 import app.navimuse.data.Look
 import app.navimuse.data.Mood
+import app.navimuse.data.SongLists
+import app.navimuse.data.SongMatch
 import app.navimuse.data.TitleWords
+import app.navimuse.data.WantedSong
+import app.navimuse.net.TidalClient
+import app.navimuse.net.TidalLinks
+import app.navimuse.net.TidalLogin
 import app.navimuse.data.Settings
 import app.navimuse.downloads.Downloads
 import app.navimuse.net.Album
@@ -416,6 +422,94 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             else -> "${songs.size} songs " + parts.joinToString(", ") + "."
         }
         TitleMix(songs, note)
+    }
+
+    // --- importing playlists (TIDAL links, song lists) -------------------------------------
+
+    val tidalLogin: StateFlow<TidalLogin?> get() = app.tidalLogin
+
+    fun saveTidal(login: TidalLogin?) {
+        app.saveTidal(login)
+        say(if (login == null) "TIDAL removed" else "TIDAL saved")
+    }
+
+    /** Where an import's songs come from: a TIDAL playlist link, or a list (pasted or a file). */
+    sealed interface ImportSource {
+        data class Tidal(val link: String) : ImportSource
+        data class SongList(val name: String, val text: String) : ImportSource
+    }
+
+    /** An import so far: which songs were found in your library, which weren't. */
+    data class ImportProgress(
+        val name: String,
+        val total: Int,
+        val done: Int,
+        val found: List<Song>,
+        val missing: List<WantedSong>,
+    ) {
+        val finished: Boolean get() = done >= total
+    }
+
+    private val imports = HashMap<String, ImportSource>()
+
+    /** Holds [source] for the import page (a list can be long, so it isn't put in the route). */
+    fun stageImport(source: ImportSource): String {
+        val key = java.util.UUID.randomUUID().toString()
+        imports[key] = source
+        return key
+    }
+
+    /**
+     * Reads the songs [key]'s source lists and finds each one in your library, reporting as it
+     * goes. Nothing is saved: the import page saves the songs found as a new playlist when asked.
+     */
+    suspend fun runImport(key: String, onProgress: (ImportProgress) -> Unit) {
+        val source = imports[key] ?: throw IllegalStateException("That import is gone. Start it again.")
+        val (name, wanted) = when (source) {
+            is ImportSource.Tidal -> {
+                val login = app.tidalLogin.value
+                    ?: throw IllegalStateException("To read TIDAL links, add your TIDAL Client ID and secret in Settings → TIDAL. Or paste the songs as a list instead.")
+                val id = TidalLinks.playlistId(source.link) ?: throw IllegalStateException("That isn't a TIDAL playlist link.")
+                val playlist = TidalClient(app.http, login).playlist(id)
+                playlist.name to playlist.tracks.map { WantedSong(it.title, it.artists, it.durationSec) }
+            }
+            is ImportSource.SongList -> source.name to SongLists.parse(source.text)
+        }
+        if (wanted.isEmpty()) throw IllegalStateException("No songs came back from that. Check the link or the list.")
+        val results = arrayOfNulls<Song>(wanted.size)
+        var done = 0
+        fun report() = onProgress(
+            ImportProgress(
+                name,
+                wanted.size,
+                done,
+                (0 until done).mapNotNull { results[it] },
+                (0 until done).filter { results[it] == null }.map { wanted[it] },
+            ),
+        )
+        report()
+        // A few searches at a time, so a long playlist is quick without crowding the server.
+        wanted.indices.chunked(6).forEach { batch ->
+            coroutineScope {
+                batch.map { i -> async { i to findInLibrary(wanted[i]) } }.awaitAll()
+            }.forEach { (i, song) -> results[i] = song }
+            done = batch.last() + 1
+            report()
+        }
+    }
+
+    /** Your library's copy of [w], if it has one (see SongMatch). */
+    private suspend fun findInLibrary(w: WantedSong): Song? {
+        suspend fun look(q: String, n: Int, want: WantedSong): Song? {
+            if (q.isBlank()) return null
+            val hits = runCatching { api().search(q, songs = n, albums = 0, artists = 0).songs }.getOrDefault(emptyList())
+            return SongMatch.best(want, hits)
+        }
+        return look(SongMatch.query(w), 10, w)
+            // The title alone: the artist may be written differently.
+            ?: look(SongMatch.plain(w.title), 25, w)
+            // A pasted "Title - Artist", the other way round.
+            ?: w.artists.singleOrNull()?.let { a -> WantedSong(a, listOf(w.title), w.durationSec).let { look(SongMatch.query(it), 10, it) } }
     }
 
     suspend fun searchSongs(query: String): List<Song> = api().search(query, songs = 25, albums = 0, artists = 0).songs

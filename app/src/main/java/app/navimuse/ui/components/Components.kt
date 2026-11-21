@@ -136,6 +136,8 @@ class UiActions(
     val openPlayer: () -> Unit = {},
     /** Asks for a title and makes a new playlist from it (see TitlePlaylistScreen). */
     val newPlaylistFromTitle: () -> Unit = {},
+    /** Asks for a TIDAL playlist link, a song list or a file to import (see ImportScreen). */
+    val importPlaylist: () -> Unit = {},
 )
 
 val LocalUi = staticCompositionLocalOf<UiActions> { error("UiActions not provided") }

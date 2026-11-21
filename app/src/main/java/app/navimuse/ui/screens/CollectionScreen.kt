@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -217,13 +218,15 @@ fun CollectionPlaylistsScreen(vm: AppViewModel, onBack: () -> Unit) {
             val automatic = playlists.filter { it.isAudioMuseManaged }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
                 item {
-                    // Name it simply and the app finds the songs (see TitlePlaylistScreen).
-                    ActionPill(
-                        "New playlist",
-                        Icons.Filled.Add,
+                    Row(
                         Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
-                        primary = true,
-                    ) { ui.newPlaylistFromTitle() }
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        // Name it simply and the app finds the songs (see TitlePlaylistScreen).
+                        ActionPill("New playlist", Icons.Filled.Add, Modifier.weight(1f), primary = true) { ui.newPlaylistFromTitle() }
+                        // A TIDAL link, a pasted list or a file (see ImportScreen).
+                        ActionPill("Import", Icons.Filled.Download, Modifier.weight(1f)) { ui.importPlaylist() }
+                    }
                 }
                 if (automatic.isNotEmpty()) {
                     item {
