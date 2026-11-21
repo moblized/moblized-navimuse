@@ -60,8 +60,8 @@ object Blocklist {
 
     fun isBlocked(song: Song): Boolean = _lists.value.isBlocked(song)
 
-    /** [songs] without anything blocked, for mixes, radio and shuffle. */
-    fun allowed(songs: List<Song>): List<Song> = songs.filterNot(::isBlocked)
+    /** [songs] without anything blocked, or any ghost song (see GhostSongs), for mixes, radio and shuffle. */
+    fun allowed(songs: List<Song>): List<Song> = songs.filterNot { isBlocked(it) || GhostSongs.isGhost(it) }
 
     fun blockSong(song: Song) = change { it.copy(songs = it.songs + (song.id to Entry(song.id, song.title, song.artist))) }
 

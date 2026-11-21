@@ -67,14 +67,18 @@ sealed interface StreamCheck {
                 type == "text/html"
         }
 
-        /** Reads the start of [url] and says what came back. */
-        suspend fun run(http: OkHttpClient, url: String): StreamCheck = withContext(Dispatchers.IO) {
+        /**
+         * Reads the start of [url] and says what came back. Asks for the first [range] bytes of
+         * audio (1 is enough to know a file is there), but reads up to [PEEK_BYTES] of an answer,
+         * since an error ignores the range and needs reading whole.
+         */
+        suspend fun run(http: OkHttpClient, url: String, range: Int = PEEK_BYTES): StreamCheck = withContext(Dispatchers.IO) {
             val client = http.newBuilder()
                 .readTimeout(20, TimeUnit.SECONDS)
                 .callTimeout(30, TimeUnit.SECONDS)
                 .build()
             // Original files honour the range; conversions ignore it and are cut off once read.
-            val request = Request.Builder().url(url).header("Range", "bytes=0-${PEEK_BYTES - 1}").get().build()
+            val request = Request.Builder().url(url).header("Range", "bytes=0-${range.coerceIn(1, PEEK_BYTES) - 1}").get().build()
             val response = try {
                 client.newCall(request).execute()
             } catch (e: IOException) {
