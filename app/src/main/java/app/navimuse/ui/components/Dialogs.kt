@@ -1,5 +1,16 @@
 package app.navimuse.ui.components
 
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -26,10 +37,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
 import app.navimuse.net.PlaylistNames
+import app.navimuse.net.TidalLinks
+import app.navimuse.ui.AppViewModel
 import app.navimuse.net.Song
 import app.navimuse.ui.friendly
 import kotlinx.coroutines.CancellationException
@@ -114,6 +130,141 @@ fun SavePlaylistDialog(songCount: Int, suggestedName: String, onDismiss: () -> U
         },
         confirmButton = {
             TextButton(onClick = { onSave(name) }, enabled = name.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Ideas for a playlist title, in the plain words it understands. */
+private val titleIdeas = listOf("Gym", "Rainy Sunday", "Late night drive", "Chill", "Road trip", "Party", "Focus")
+
+/**
+ * Name a new playlist, simply ("Gym", "Rainy Sunday", "Late night drive"), and the app finds
+ * songs for it from that title, like Tidal. Nothing is saved until you press Save.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NewPlaylistDialog(onDismiss: () -> Unit, onFind: (String) -> Unit) {
+    var title by remember { mutableStateOf("") }
+    val risky = PlaylistNames.isAudioMuseManaged(title)
+    // Ready to type straight away.
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(150)
+        runCatching { focus.requestFocus() }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New playlist") },
+        text = {
+            Column {
+                Text(
+                    "Name it in a few plain words and NaviMuse fills it with songs from your library.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Playlist name") },
+                    placeholder = { Text("e.g. Rainy Sunday") },
+                    singleLine = true,
+                    isError = risky,
+                    supportingText = if (risky) {
+                        { Text("AudioMuse-AI deletes playlists ending in _automatic. It'll be saved as \"${PlaylistNames.safe(title)}\".") }
+                    } else {
+                        null
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { if (title.isNotBlank()) onFind(title) }),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).focusRequester(focus),
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    titleIdeas.forEach { idea ->
+                        SuggestionChip(onClick = { title = idea }, label = { Text(idea) })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onFind(title) }, enabled = title.isNotBlank()) { Text("Find songs") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * Import a playlist: a TIDAL playlist link, songs pasted one per line ("Artist - Title"), or a
+ * file (a CSV a transfer service exported from TIDAL, or a plain list). The songs are then found
+ * in your library; nothing is saved until you press Save.
+ */
+@Composable
+fun ImportPlaylistDialog(
+    hasTidal: Boolean,
+    onDismiss: () -> Unit,
+    onSetUpTidal: () -> Unit,
+    onImport: (AppViewModel.ImportSource) -> Unit,
+) {
+    val context = LocalContext.current
+    var text by remember { mutableStateOf("") }
+    val isLink = TidalLinks.playlistId(text) != null
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val body = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } }.getOrNull()
+        val name = runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        }.getOrNull()?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Imported playlist"
+        if (!body.isNullOrBlank()) onImport(AppViewModel.ImportSource.SongList(name, body))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import a playlist") },
+        text = {
+            Column {
+                Text(
+                    "Paste a TIDAL playlist link, or the songs one per line (Artist - Title). Or pick a file: a CSV exported from TIDAL by TuneMyMusic or Soundiiz works.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("TIDAL link or songs") },
+                    placeholder = { Text("https://tidal.com/browse/playlist/…") },
+                    minLines = 3,
+                    maxLines = 8,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
+                if (isLink && !hasTidal) {
+                    Text(
+                        "Reading TIDAL links needs your own free TIDAL developer app (Settings → TIDAL). Or paste the songs instead.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    TextButton(onClick = onSetUpTidal) { Text("Set up TIDAL") }
+                }
+                TextButton(onClick = { pickFile.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")) }) {
+                    Text("Choose a file")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onImport(
+                        if (isLink) AppViewModel.ImportSource.Tidal(text.trim())
+                        else AppViewModel.ImportSource.SongList("Imported playlist", text),
+                    )
+                },
+                enabled = text.isNotBlank() && !(isLink && !hasTidal),
+            ) { Text("Import") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

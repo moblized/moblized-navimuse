@@ -38,6 +38,8 @@ import app.navimuse.ui.icons.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -54,6 +56,8 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -68,6 +72,8 @@ import app.navimuse.net.AlbumListType
 import app.navimuse.net.Song
 import app.navimuse.ui.components.AddToPlaylistDialog
 import app.navimuse.ui.components.LocalUi
+import app.navimuse.ui.components.ImportPlaylistDialog
+import app.navimuse.ui.components.NewPlaylistDialog
 import app.navimuse.ui.components.SavePlaylistDialog
 import app.navimuse.ui.components.UiActions
 import app.navimuse.ui.screens.AlbumScreen
@@ -80,6 +86,8 @@ import app.navimuse.ui.screens.CollectionScreen
 import app.navimuse.ui.screens.DownloadsScreen
 import app.navimuse.ui.screens.FavouritesScreen
 import app.navimuse.ui.screens.GenreScreen
+import app.navimuse.ui.screens.ImportScreen
+import app.navimuse.ui.screens.TitlePlaylistScreen
 import app.navimuse.ui.screens.MixScreen
 import app.navimuse.ui.screens.MoodScreen
 import app.navimuse.ui.screens.HomeScreen
@@ -111,6 +119,10 @@ sealed interface Route {
     data class GenrePage(val name: String) : Route
     data class MoodPage(val mood: app.navimuse.data.Mood) : Route
     data class MixPage(val seed: MixSeed) : Route
+    /** A new playlist filled from its [title] alone ("Gym", "Rainy Sunday"), before it's saved. */
+    data class TitlePlaylist(val title: String) : Route
+    /** An import of a TIDAL playlist or a song list, staged in the view model under [key]. */
+    data class ImportPage(val key: String) : Route
     data object Albums : Route
     data object Artists : Route
     data object Playlists : Route
@@ -146,6 +158,9 @@ fun AppRoot(vm: AppViewModel) {
     var showPlayer by remember { mutableStateOf(false) }
     var playlistPickFor by remember { mutableStateOf<List<Song>?>(null) }
     var saveFor by remember { mutableStateOf<Pair<List<Song>, String>?>(null) }
+    var namingNew by remember { mutableStateOf(false) }
+    var importing by remember { mutableStateOf(false) }
+    val tidalLogin by vm.tidalLogin.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val saveable = rememberSaveableStateHolder()
     // A page's scroll position is kept while it's open (so Back returns to where you were),
@@ -171,7 +186,8 @@ fun AppRoot(vm: AppViewModel) {
     }
     LaunchedEffect(playerState.error) {
         playerState.error?.let {
-            snackbar.showSnackbar(it)
+            // Player notes say what happened to a song and what to do: long enough to read.
+            snackbar.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long)
             vm.player.clearError()
         }
     }
@@ -204,6 +220,8 @@ fun AppRoot(vm: AppViewModel) {
                 clearPages()
             },
             openPlayer = { showPlayer = true },
+            newPlaylistFromTitle = { namingNew = true },
+            importPlaylist = { importing = true },
         )
     }
 
@@ -261,6 +279,8 @@ fun AppRoot(vm: AppViewModel) {
                                 is Route.GenrePage -> GenreScreen(vm, top.name, onBack)
                                 is Route.MoodPage -> MoodScreen(vm, top.mood, onBack)
                                 is Route.MixPage -> MixScreen(vm, top.seed, onBack)
+                                is Route.TitlePlaylist -> TitlePlaylistScreen(vm, top.title, onBack)
+                                is Route.ImportPage -> ImportScreen(vm, top.key, onBack)
                                 Route.Albums -> CollectionAlbumsScreen(vm, onBack)
                                 Route.Artists -> CollectionArtistsScreen(vm, onBack)
                                 Route.Playlists -> CollectionPlaylistsScreen(vm, onBack)
@@ -299,7 +319,16 @@ fun AppRoot(vm: AppViewModel) {
                             Modifier.padding(bottom = with(LocalDensity.current) { bottomBarPx.toDp() })
                         },
                     ),
-            )
+            ) { data ->
+                // Always solid, whatever the theme, so the list behind never shows through the text.
+                val container = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 1f)
+                Snackbar(
+                    data,
+                    containerColor = container,
+                    contentColor = if (container.luminance() > 0.5f) Color.Black else Color.White,
+                    dismissActionContentColor = if (container.luminance() > 0.5f) Color.Black else Color.White,
+                )
+            }
         }
 
         playlistPickFor?.let { songs ->
@@ -309,6 +338,29 @@ fun AppRoot(vm: AppViewModel) {
                 onNew = {
                     playlistPickFor = null
                     saveFor = songs to ""
+                },
+            )
+        }
+        if (importing) {
+            ImportPlaylistDialog(
+                hasTidal = tidalLogin != null,
+                onDismiss = { importing = false },
+                onSetUpTidal = {
+                    importing = false
+                    actions.navigate(Route.SettingsPage)
+                },
+                onImport = { source ->
+                    importing = false
+                    actions.navigate(Route.ImportPage(vm.stageImport(source)))
+                },
+            )
+        }
+        if (namingNew) {
+            NewPlaylistDialog(
+                onDismiss = { namingNew = false },
+                onFind = { title ->
+                    namingNew = false
+                    actions.navigate(Route.TitlePlaylist(title.trim()))
                 },
             )
         }

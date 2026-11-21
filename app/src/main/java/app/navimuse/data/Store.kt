@@ -29,6 +29,8 @@ data class Settings(
     val mobileQuality: Quality = Quality.NORMAL,
     val scrobble: Boolean = true,
     val mixSize: Int = 50,
+    /** When the queue runs out (its last song, a single, a one-song album), add radio and keep going. */
+    val autoRadio: Boolean = true,
     /** Quality songs are saved at for offline play. */
     val downloadQuality: Quality = Quality.ORIGINAL,
     val downloadWifiOnly: Boolean = true,
@@ -107,12 +109,30 @@ class Store(context: Context) {
         e.apply()
     }
 
+    /** Your own TIDAL developer app, for reading public TIDAL playlists to import. */
+    fun tidal(): app.navimuse.net.TidalLogin? {
+        val id = prefs.getString("tidalId", null)?.takeIf { it.isNotBlank() } ?: return null
+        val secret = prefs.getString("tidalSecret", null)?.let { SecretBox.decrypt(it) }.orEmpty()
+        return app.navimuse.net.TidalLogin(id, secret)
+    }
+
+    fun saveTidal(login: app.navimuse.net.TidalLogin?) {
+        val e = prefs.edit()
+        if (login == null || login.clientId.isBlank()) {
+            e.remove("tidalId").remove("tidalSecret")
+        } else {
+            e.putString("tidalId", login.clientId.trim()).putString("tidalSecret", SecretBox.encrypt(login.clientSecret.trim()))
+        }
+        e.apply()
+    }
+
     fun settings(): Settings = Settings(
         theme = enumOr(prefs.getString("theme", null), ThemeMode.DARK),
         wifiQuality = enumOr(prefs.getString("wifiQuality", null), Quality.ORIGINAL),
         mobileQuality = enumOr(prefs.getString("mobileQuality", null), Quality.NORMAL),
         scrobble = prefs.getBoolean("scrobble", true),
         mixSize = prefs.getInt("mixSize", 50),
+        autoRadio = prefs.getBoolean("autoRadio", true),
         downloadQuality = enumOr(prefs.getString("downloadQuality", null), Quality.ORIGINAL),
         downloadWifiOnly = prefs.getBoolean("downloadWifiOnly", true),
         autoDownloadFavourites = prefs.getBoolean("autoDownloadFavourites", false),
@@ -137,6 +157,7 @@ class Store(context: Context) {
             .putString("mobileQuality", s.mobileQuality.name)
             .putBoolean("scrobble", s.scrobble)
             .putInt("mixSize", s.mixSize)
+            .putBoolean("autoRadio", s.autoRadio)
             .putString("downloadQuality", s.downloadQuality.name)
             .putBoolean("downloadWifiOnly", s.downloadWifiOnly)
             .putBoolean("autoDownloadFavourites", s.autoDownloadFavourites)

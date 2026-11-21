@@ -134,6 +134,22 @@ def type_text(s, shows=None):
         print(f"  still no {shows!r} on screen", flush=True)
 
 
+def fill(label, value, shows, tries=3):
+    """Types [value] into the field labelled [label], starting it over (tap, clear, retype) if
+    the emulator's keyboard drops the text, which it sometimes does on a fresh boot."""
+    for attempt in range(tries):
+        tap(text=label) if find(text=label) is not None else tap(text=shows, contains=True)
+        time.sleep(0.5 + attempt)
+        if attempt:
+            adb("shell", "input", "keycombination", "KEYCODE_CTRL_LEFT", "KEYCODE_A")
+            adb("shell", "input", "keyevent", "KEYCODE_DEL")
+        type_text(value, shows=shows)
+        if find(text=shows, contains=True) is not None:
+            return
+        print(f"  {label}: typing didn't take, starting the field over", flush=True)
+    raise AssertionError(f"couldn't type into {label}")
+
+
 def press_keys(s):
     for ch in s:
         if ch.isalpha():
@@ -217,10 +233,8 @@ def login():
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity", check=True)
     wait_for(text="Connect", timeout=60)
     shot("01-login")
-    tap(text="Navidrome address")
-    type_text("http://10.0.2.2:4533", shows="10.0.2.2")
-    tap(text="Username")
-    type_text("admin", shows="admin")
+    fill("Navidrome address", "http://10.0.2.2:4533", shows="10.0.2.2")
+    fill("Username", "admin", shows="admin")
     tap(text="Password")
     type_text("secret123")
     adb("shell", "input", "keyevent", "66")  # Enter = Go on the password field
@@ -258,6 +272,62 @@ def keep_copy():
     assert "Chill (kept)" in names, f"kept copy missing: {names}"
     assert "Chill_automatic" in names, f"original playlist disappeared: {names}"
     back()
+
+
+def playlist_from_title():
+    """New playlist, named in plain words: songs come from the library, saved under that name."""
+    tap(text="New playlist")
+    wait_for(text="Find songs")
+    time.sleep(1)
+    type_text("Chill ambient", shows="Chill ambient")
+    adb("shell", "input", "keyevent", "111")  # keyboard away
+    time.sleep(1)
+    tap(text="Find songs")
+    wait_for(text="Save playlist", timeout=40)
+    time.sleep(1)
+    shot("05b-playlist-from-title")
+    tap(text="Save playlist")
+    saved = None
+    for _ in range(15):
+        saved = next((p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Chill ambient"), None)
+        if saved:
+            break
+        time.sleep(1)
+    assert saved, "no playlist named Chill ambient"
+    assert saved.get("songCount", 0) > 0, f"the new playlist is empty: {saved}"
+    print(f"  saved: {saved['name']} with {saved['songCount']} songs", flush=True)
+    wait_for(text="Road trip")
+
+
+def import_list():
+    """Import a pasted song list: the song the library has is found, the other is listed as missing."""
+    tap(text="Import")
+    wait_for(text="Import a playlist")
+    tap(text="TIDAL link or songs")
+    time.sleep(1)
+    type_text("Test Artist - Sine Song 1", shows="Sine Song 1")
+    adb("shell", "input", "keyevent", "66")  # new line
+    type_text("Nobody - Not A Real Song")
+    adb("shell", "input", "keyevent", "111")  # keyboard away
+    time.sleep(1)
+    tap(text="Import", last=True)
+    wait_for(text="Not in your library (1)", timeout=40)
+    assert find(text="Sine Song 1") is not None, "the song the library has wasn't found"
+    time.sleep(1)
+    shot("05c-import")
+    tap(text="Save playlist")
+    wait_for(text="Save as playlist")
+    tap(text="Save")
+    saved = None
+    for _ in range(15):
+        saved = next((p for p in api("getPlaylists")["playlists"]["playlist"] if p["name"] == "Imported playlist"), None)
+        if saved:
+            break
+        time.sleep(1)
+    assert saved, "no playlist named Imported playlist"
+    assert saved.get("songCount") == 1, f"expected the 1 song found: {saved}"
+    back()
+    wait_for(text="Road trip")
 
 
 def play():
@@ -781,7 +851,7 @@ def unplayable_switches():
     tap(text="Original")
     back()
     tap(text="Search")
-    box = first(lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
+    box = first(lambda: find(text="Vanished"), lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
     tap_node(box)
     adb("shell", "input", "keyevent", "123")  # end of the text
     for _ in range(12):
@@ -816,6 +886,82 @@ def unplayable_switches():
     back()
 
 
+def missing_song_skips():
+    """A song Navidrome lists but whose file is gone: the app says so, without trying every format."""
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Search")
+    box = first(lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
+    tap_node(box)
+    adb("shell", "input", "keyevent", "123")  # end of the text
+    for _ in range(12):
+        adb("shell", "input", "keyevent", "67")  # delete
+    type_text("Vanished")
+    wait_for(text="Vanished Track", timeout=20)
+    adb("shell", "input", "keyevent", "111")
+    tap(text="Vanished Track")
+    note = None
+    switched = None
+    for _ in range(20):
+        root = dump()
+        texts = [x.get("text", "") for x in root.iter("node")]
+        note = next((t for t in texts if "can't find its file" in t), None)
+        switched = switched or next((t for t in texts if "Vanished" in t and ("playing as" in t or "in any form" in t)), None)
+        if note:
+            break
+        time.sleep(1)
+    shot("15c-missing-song")
+    assert note, "no note that Navidrome can't find the song's file"
+    assert "Vanished Track" in note, f"the note doesn't name the song: {note}"
+    assert not switched, f"it tried other formats for a missing file: {switched}"
+    print(f"  note: {note}", flush=True)
+
+
+def repeat_mode():
+    out = adb("shell", "dumpsys", "media_session")
+    return "one" if "Repeat one" in out else "all" if "Repeat all" in out else "off"
+
+
+def autoplay_radio():
+    """The WMA song from search is a queue of one: with repeat off, radio is added after it."""
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    open_player()
+    try:
+        for _ in range(3):
+            if repeat_mode() == "off":
+                break
+            tap(desc="Repeat")
+            time.sleep(1.5)
+        assert repeat_mode() == "off", "couldn't turn repeat off"
+        tap(desc="Queue")
+        wait_for(text="Autoplay", timeout=40)
+        time.sleep(1)
+        shot("15d-autoplay-queue")
+        out = adb("shell", "dumpsys", "media_session")
+        sizes = [int(n) for n in re.findall(r"queueTitle=[^\n]*size=(\d+)", out)]
+        print(f"  queue sizes: {sizes}", flush=True)
+        assert any(n > 1 for n in sizes), f"nothing was added after the single: {sizes}"
+    finally:
+        # Whatever happened: repeat back on (later checks expect music to keep playing), and out
+        # of the queue and the playing screen, so the next checks start from the tabs.
+        for _ in range(3):
+            if repeat_mode() == "all":
+                break
+            n = find(desc="Repeat")
+            if n is None:
+                back()
+                time.sleep(1)
+                continue
+            tap_node(n)
+            time.sleep(1.5)
+        for _ in range(3):
+            if find(text="Home") is not None:
+                break
+            back()
+            time.sleep(1)
+
+
 def background_playback():
     # Music should keep playing with the app in the background.
     out = adb("shell", "dumpsys", "media_session")
@@ -827,6 +973,8 @@ for name, fn in [
     ("log in", login),
     ("collection", library),
     ("keep a copy of an _automatic playlist", keep_copy),
+    ("a new playlist filled from its title", playlist_from_title),
+    ("import a pasted song list", import_list),
     ("play a song + now-playing report", play),
     ("now playing screen and queue", now_playing),
     ("Android Auto buttons: favourite, shuffle, repeat, radio", auto_buttons),
@@ -839,7 +987,9 @@ for name, fn in [
     ("search", search),
     ("album and artist pages", album_and_artist),
     ("Dolby badge on a Dolby album", dolby_album),
+    ("a song whose file is gone on the server is skipped with a note", missing_song_skips),
     ("a song the phone can't play switches by itself", unplayable_switches),
+    ("autoplay radio after the last song", autoplay_radio),
     ("safety, settings, dark mode + dark icon", settings_and_dark),
     ("download an album for offline play", downloads),
     ("auto cache: played songs kept, then cleared", auto_cache),

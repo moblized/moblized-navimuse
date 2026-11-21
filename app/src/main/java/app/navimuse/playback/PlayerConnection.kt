@@ -17,7 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-data class QueueEntry(val index: Int, val song: Song, val artworkUrl: String?)
+/** A song in the queue; [autoplay] when autoplay radio added it to keep the music going. */
+data class QueueEntry(val index: Int, val song: Song, val artworkUrl: String?, val autoplay: Boolean = false)
 
 data class PlayerUiState(
     val connected: Boolean = false,
@@ -56,8 +57,9 @@ class PlayerConnection(private val app: NaviMuseApp) {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            // The player retries songs the phone can't play in another form, and says so itself.
-            if (Convert.isFormatError(error.errorCode)) return
+            // The player looks into songs that didn't play (missing on the server, a format the
+            // phone can't play…) and says what happened itself.
+            if (Convert.isSongError(error.errorCode)) return
             _state.update { it.copy(error = describe(error)) }
         }
     }
@@ -147,7 +149,9 @@ class PlayerConnection(private val app: NaviMuseApp) {
         if (list.isEmpty()) return
         withController { c ->
             val wasEmpty = c.mediaItemCount == 0
-            c.addMediaItems(list)
+            // After what you picked, before any autoplay songs still to come.
+            val ids = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }
+            c.addMediaItems(MediaIds.addAt(ids, c.currentMediaItemIndex), list)
             if (wasEmpty) {
                 c.prepare()
                 c.play()
@@ -215,14 +219,16 @@ class PlayerConnection(private val app: NaviMuseApp) {
         val queue = if (rebuildQueue || _state.value.queue.size != c.mediaItemCount) {
             (0 until c.mediaItemCount).mapNotNull { i ->
                 val item = c.getMediaItemAt(i)
-                item.toSong()?.let { QueueEntry(i, it, item.mediaMetadata.artworkUri?.toString()) }
+                item.toSong()?.let { QueueEntry(i, it, item.mediaMetadata.artworkUri?.toString(), MediaIds.isAutoplay(item.mediaId)) }
             }
         } else {
             _state.value.queue
         }
         val index = c.currentMediaItemIndex
         val currentItem = c.currentMediaItem
-        val current = currentItem?.toSong()?.let { QueueEntry(index, it, currentItem.mediaMetadata.artworkUri?.toString()) }
+        val current = currentItem?.toSong()?.let {
+            QueueEntry(index, it, currentItem.mediaMetadata.artworkUri?.toString(), MediaIds.isAutoplay(currentItem.mediaId))
+        }
         _state.update {
             it.copy(
                 connected = true,
@@ -254,7 +260,7 @@ class PlayerConnection(private val app: NaviMuseApp) {
         )
     }
 
-    // Format errors never get here: the player tries those songs another way (see Convert).
+    // Song errors never get here: the player looks into those itself (see PlaybackService).
     private fun describe(e: PlaybackException): String = when (e.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,

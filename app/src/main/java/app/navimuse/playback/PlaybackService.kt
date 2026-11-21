@@ -17,6 +17,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
@@ -40,7 +41,9 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.guava.future
 
@@ -66,7 +69,11 @@ class PlaybackService : MediaLibraryService() {
         // If the phone's Dolby (or other) decoder can't start, try its next decoder instead of stopping.
         val renderers = DefaultRenderersFactory(this).setEnableDecoderFallback(true)
         player = ExoPlayer.Builder(this, renderers)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(Streaming.playerSource(app)))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(this)
+                    .setDataSourceFactory(Streaming.playerSource(app))
+                    .setLoadErrorHandlingPolicy(Streaming.loadErrors()),
+            )
             .setLoadControl(Streaming.loadControl())
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -109,51 +116,48 @@ class PlaybackService : MediaLibraryService() {
                 player.currentMediaItem?.toSong()?.let { Dolby.learn(it, label) }
             }
         })
-        // A song the phone can't play the way the server sent it: try it another way (the original
-        // file, MP3, a lower bitrate) from the same spot, and remember what worked.
+        // A song that didn't play: first see what the server is sending (see StreamCheck). An error
+        // from Navidrome (the song's file is gone, say) is said as it is, and the queue moves on.
+        // Audio the phone can't play is tried another way (the original file, MP3, a lower bitrate)
+        // from the same spot, and what worked is remembered once it really plays.
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                if (!Convert.isFormatError(error.errorCode)) return
-                val index = player.currentMediaItemIndex
-                val item = player.currentMediaItem ?: return
-                val song = item.toSong() ?: return
-                val api = app.api() ?: return
-                val key = item.localConfiguration?.customCacheKey
-                val failed = kbpsOfKey(key)
-                // A broken half-saved copy would fail the same way again.
-                if (failed != null && key != null) runCatching { AudioCache.get(app).removeResource(key) }
-                val next = Convert.nextTry(song.id, failed, app.currentMaxBitRate())
-                if (next == null) {
-                    if (player.hasNextMediaItem()) {
-                        app.player.notice("This phone can't play \"${song.title}\" in any form the server sends, so it was skipped.")
-                        player.seekToNextMediaItem()
-                        player.prepare()
-                    } else {
-                        app.player.notice("This phone can't play \"${song.title}\" in any form the server sends.")
-                    }
-                    return
-                }
-                val position = player.currentPosition
-                player.replaceMediaItem(
-                    index,
-                    item.buildUpon().setUri(api.streamUrl(song.id, next)).setCustomCacheKey("${song.id}@$next").build(),
-                )
-                player.seekTo(index, position)
-                player.prepare()
-                app.player.notice(
-                    "\"${song.title}\" wouldn't play as ${Convert.describe(failed, song.suffix)} on this phone, " +
-                        "so it's playing as ${Convert.describe(next, song.suffix)}.",
-                )
+                if (Convert.isSongError(error.errorCode)) lookInto(error)
             }
 
-            // It plays: if that took a retry, remember the way that worked.
-            override fun onTracksChanged(tracks: Tracks) {
-                if (tracks.groups.none { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }) return
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState != Player.STATE_READY) return
+                skippedInARow = 0
+                busyInARow = 0
                 val item = player.currentMediaItem ?: return
+                val song = item.toSong() ?: return
+                retriedSame -= song.id
                 val kbps = kbpsOfKey(item.localConfiguration?.customCacheKey) ?: return
-                item.toSong()?.let { Convert.worked(it, kbps) }
+                val switch = Convert.worked(song, kbps) ?: return
+                app.player.notice(
+                    "\"${song.title}\" wouldn't play as ${Convert.describe(switch.from, song.suffix)} on this phone, " +
+                        "so it's playing as ${Convert.describe(switch.to, song.suffix)}.",
+                )
             }
         })
+        // Autoplay radio: when the last song up starts (the end of the queue, a single, a one-song
+        // album), songs like it are added after it, so the music keeps going.
+        player.addListener(object : Player.Listener {
+            override fun onEvents(p: Player, events: Player.Events) {
+                if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) autoRadioFor = null
+                if (events.containsAny(
+                        Player.EVENT_MEDIA_ITEM_TRANSITION,
+                        Player.EVENT_TIMELINE_CHANGED,
+                        Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                        Player.EVENT_REPEAT_MODE_CHANGED,
+                        Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED,
+                    )
+                ) {
+                    keepGoing()
+                }
+            }
+        })
+
         // Blocked songs and artists are skipped when they come up next (picking one yourself plays it).
         player.addListener(object : Player.Listener {
             private var skipped = 0
@@ -185,6 +189,178 @@ class PlaybackService : MediaLibraryService() {
         })
 
         restoreQueue()
+    }
+
+    // --- songs that don't play -------------------------------------------------------------
+
+    /** Songs skipped one after another because the server wouldn't send them (so a queue of them ends). */
+    private var skippedInARow = 0
+    /** Times in a row the server said it was too busy converting. */
+    private var busyInARow = 0
+    /** Songs already given a second go in the same form, after the server sent something odd once. */
+    private val retriedSame = HashSet<String>()
+    private var looking: Job? = null
+
+    /** Works out why the current song stopped (see the listener above) and does something about it. */
+    private fun lookInto(error: PlaybackException) {
+        val index = player.currentMediaItemIndex
+        val item = player.currentMediaItem ?: return
+        val song = item.toSong() ?: return
+        val api = app.api() ?: return
+        val key = item.localConfiguration?.customCacheKey
+        val failed = kbpsOfKey(key)
+        // A broken half-saved copy would fail the same way again.
+        if (failed != null && key != null) runCatching { AudioCache.get(app).removeResource(key) }
+        looking?.cancel()
+        looking = scope.launch {
+            // The phone's own download didn't play: nothing to ask the server, stream it instead.
+            val check = if (failed == null) StreamCheck.Audio else look(api, song.id, failed, item.localConfiguration?.uri?.toString())
+            // Moved on meanwhile (another song, or Play pressed again): leave it be.
+            fun stillStuck() = player.playerError != null && player.currentMediaItemIndex == index &&
+                player.currentMediaItem?.mediaId == item.mediaId
+            // Autoplay may be adding songs after this one: wait for it, so there's somewhere to go.
+            autoRadioJob?.join()
+            if (!stillStuck()) return@launch
+            when (check) {
+                StreamCheck.Audio -> {
+                    if (Convert.isFormatError(error.errorCode)) {
+                        tryAnotherWay(index, item, song, failed, api)
+                    } else if (retriedSame.add(song.id)) {
+                        // The server sent an error before but audio now: once more as it was.
+                        player.prepare()
+                    } else {
+                        Convert.giveUp(song.id)
+                        app.player.notice("Can't play \"${song.title}\": your server didn't send it properly. Press play to try again.")
+                    }
+                }
+                is StreamCheck.Busy -> {
+                    if (++busyInARow > 3) {
+                        Convert.giveUp(song.id)
+                        app.player.notice(SongTrouble.notice(song.title, check, skipped = false))
+                    } else {
+                        delay(check.retryAfterSeconds * 1000L)
+                        if (stillStuck()) player.prepare()
+                    }
+                }
+                StreamCheck.Unreachable -> {
+                    Convert.giveUp(song.id)
+                    app.player.notice("Can't reach your server to play \"${song.title}\".")
+                }
+                StreamCheck.Empty, is StreamCheck.Refused -> {
+                    // The server's trouble, not the phone's: nothing to learn about formats.
+                    Convert.giveUp(song.id)
+                    val songOnly = check !is StreamCheck.Refused || check.songOnly
+                    if (songOnly && player.hasNextMediaItem() && skippedInARow < player.mediaItemCount) {
+                        skippedInARow++
+                        app.player.notice(SongTrouble.notice(song.title, check, skipped = true))
+                        player.seekToNextMediaItem()
+                        player.prepare()
+                    } else {
+                        app.player.notice(SongTrouble.notice(song.title, check, skipped = false))
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * What the server sends for [songId] as [failed]. When a conversion failed on the server (an
+     * empty answer: ffmpeg had nothing to read, or an error), the original file says why: if it's
+     * missing, that's the answer; if it's there, the phone can try it another way.
+     */
+    private suspend fun look(api: SubsonicClient, songId: String, failed: Int, url: String?): StreamCheck {
+        val check = StreamCheck.run(app.http, url ?: api.streamUrl(songId, failed))
+        if (failed == 0 || check == StreamCheck.Audio || check is StreamCheck.Busy || check == StreamCheck.Unreachable) return check
+        return StreamCheck.run(app.http, api.streamUrl(songId, 0))
+    }
+
+    /** The phone can't play [song] as [failed]: the next form to try, or on to the next song. */
+    private fun tryAnotherWay(index: Int, item: MediaItem, song: Song, failed: Int?, api: SubsonicClient) {
+        val next = Convert.nextTry(song.id, failed, app.currentMaxBitRate())
+        if (next == null) {
+            if (player.hasNextMediaItem()) {
+                app.player.notice("This phone can't play \"${song.title}\" in any form the server sends, so it was skipped.")
+                player.seekToNextMediaItem()
+                player.prepare()
+            } else {
+                app.player.notice("This phone can't play \"${song.title}\" in any form the server sends.")
+            }
+            return
+        }
+        val position = player.currentPosition
+        player.replaceMediaItem(
+            index,
+            item.buildUpon().setUri(api.streamUrl(song.id, next)).setCustomCacheKey("${song.id}@$next").build(),
+        )
+        player.seekTo(index, position)
+        player.prepare()
+    }
+
+    // --- autoplay radio ----------------------------------------------------------------------
+
+    /** The queue item autoplay last looked for songs for (asked once per song, even if none came). */
+    private var autoRadioFor: String? = null
+    private var autoRadioJob: Job? = null
+
+    /**
+     * When the song playing is the last one up and repeat is off, adds songs like it after it (see
+     * [autoplayPicks]), so the music keeps going without a gap. They're marked as autoplay, so "Add to queue" puts your
+     * songs before them.
+     */
+    private fun keepGoing() {
+        if (!app.settings.value.autoRadio) return
+        if (!player.playWhenReady || player.repeatMode != Player.REPEAT_MODE_OFF) return
+        if (player.mediaItemCount == 0 || player.hasNextMediaItem()) return
+        val item = player.currentMediaItem ?: return
+        val seed = item.toSong() ?: return
+        if (autoRadioFor == item.mediaId) return
+        autoRadioFor = item.mediaId
+        autoRadioJob?.cancel()
+        autoRadioJob = scope.launch {
+            val api = app.api() ?: return@launch
+            val size = app.settings.value.mixSize
+            val queued = (0 until player.mediaItemCount).mapNotNullTo(HashSet<String>()) { MediaIds.songIdOf(player.getMediaItemAt(it).mediaId) }
+            val picks = autoplayPicks(api, seed, size, queued)
+            // Something else came up next meanwhile (you queued songs, or picked another): leave it.
+            if (picks.isEmpty() || player.currentMediaItem?.mediaId != item.mediaId || player.hasNextMediaItem()) return@launch
+            val items = picks.map { it.toMediaItem(api, app.bitrateFor(it), MediaIds.AUTOPLAY) }
+            // With shuffle on, new songs would be shuffled in among the ones already played: keep
+            // the order so far, then the radio in its own order.
+            val order = if (player.shuffleModeEnabled) shuffleOrderNow() else null
+            val first = player.mediaItemCount
+            player.addMediaItems(items)
+            if (order != null && order.size == first) {
+                player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder((order + (first until first + items.size)).toIntArray(), System.nanoTime()))
+            }
+        }
+    }
+
+    /**
+     * Songs to keep going with after [seed], none of them [queued] or blocked: songs that sound
+     * like it (AudioMuse-AI's Instant Mix), else its artist's radio, else songs from its genre,
+     * else anything from your library, so the music never just stops.
+     */
+    private suspend fun autoplayPicks(api: SubsonicClient, seed: Song, size: Int, queued: Set<String>): List<Song> {
+        suspend fun from(source: suspend () -> List<Song>): List<Song> =
+            Blocklist.allowed(runCatching { source() }.getOrDefault(emptyList())).filter { it.id !in queued }.distinctBy { it.id }
+        from { api.similarSongs(seed.id, size) }.let { if (it.isNotEmpty()) return it }
+        seed.artistId?.let { artistId -> from { api.similarSongsByArtist(artistId, size) }.let { if (it.isNotEmpty()) return it } }
+        // The queue's copy of a song doesn't carry its genre: ask for it.
+        val genre = seed.genre ?: runCatching { api.song(seed.id)?.genre }.getOrNull()
+        if (!genre.isNullOrBlank()) from { api.randomSongs(size, genre) }.let { if (it.isNotEmpty()) return it }
+        return from { api.randomSongs(size) }
+    }
+
+    /** The queue's indices in the order shuffle plays them. */
+    private fun shuffleOrderNow(): List<Int> {
+        val timeline = player.currentTimeline
+        val out = ArrayList<Int>(timeline.windowCount)
+        var i = timeline.getFirstWindowIndex(true)
+        while (i != C.INDEX_UNSET && out.size < timeline.windowCount) {
+            out += i
+            i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, true)
+        }
+        return out
     }
 
     /** Puts the last queue back (paused), so the app opens where you left off. */
