@@ -971,7 +971,7 @@ def trash_and_put_back():
     tap(text="Collection")
     tap(desc="Settings")
     settings_tab("General")
-    scroll_to("SMB password")
+    scroll_to("NAS address")
     # The NAS address starts as the Navidrome server's (10.0.2.2 here).
     assert find(text="10.0.2.2", contains=True) is not None, "the NAS address didn't start as Navidrome's"
     # Typed the way people do: the NAS address again in Share, the share's path in Folder.
