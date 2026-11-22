@@ -31,6 +31,8 @@ data class Settings(
     val mixSize: Int = 50,
     /** When the queue runs out (its last song, a single, a one-song album), add radio and keep going. */
     val autoRadio: Boolean = true,
+    /** Delete songs for good once they've been in the NAS Trash for 30 days. */
+    val trashAutoEmpty: Boolean = true,
     /** Quality songs are saved at for offline play. */
     val downloadQuality: Quality = Quality.ORIGINAL,
     val downloadWifiOnly: Boolean = true,
@@ -157,6 +159,7 @@ class Store(context: Context) {
         scrobble = prefs.getBoolean("scrobble", true),
         mixSize = prefs.getInt("mixSize", 50),
         autoRadio = prefs.getBoolean("autoRadio", true),
+        trashAutoEmpty = prefs.getBoolean("trashAutoEmpty", true),
         downloadQuality = enumOr(prefs.getString("downloadQuality", null), Quality.ORIGINAL),
         downloadWifiOnly = prefs.getBoolean("downloadWifiOnly", true),
         autoDownloadFavourites = prefs.getBoolean("autoDownloadFavourites", false),
@@ -182,6 +185,7 @@ class Store(context: Context) {
             .putBoolean("scrobble", s.scrobble)
             .putInt("mixSize", s.mixSize)
             .putBoolean("autoRadio", s.autoRadio)
+            .putBoolean("trashAutoEmpty", s.trashAutoEmpty)
             .putString("downloadQuality", s.downloadQuality.name)
             .putBoolean("downloadWifiOnly", s.downloadWifiOnly)
             .putBoolean("autoDownloadFavourites", s.autoDownloadFavourites)

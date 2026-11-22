@@ -92,6 +92,47 @@ class SafetyGuardTest {
         assertTrue(moveBlocked("_Trash/$song", "_Trash/$song"))
     }
 
+    private fun purgeBlocked(path: String, trashedAt: Long, now: Long) = try {
+        SafetyGuard.checkPurge(path, trashedAt, now)
+        false
+    } catch (e: BlockedRequestException) {
+        true
+    }
+
+    @Test
+    fun onlySongsThirtyDaysInTheTrashAreDeleted() {
+        val day = 24L * 60 * 60 * 1000
+        val now = 100 * day
+        val inTrash = "_Trash/Saliva/Every Twenty Years/03.flac"
+        assertFalse(purgeBlocked(inTrash, now - 30 * day, now))
+        assertFalse(purgeBlocked(inTrash, now - 45 * day, now))
+        // Too soon, unknown time, or a time in the future: kept.
+        assertTrue(purgeBlocked(inTrash, now - 29 * day, now))
+        assertTrue(purgeBlocked(inTrash, 0, now))
+        assertTrue(purgeBlocked(inTrash, now + day, now))
+        // Never anything outside the Trash, the Trash itself, or its own files.
+        assertTrue(purgeBlocked("Saliva/Every Twenty Years/03.flac", now - 60 * day, now))
+        assertTrue(purgeBlocked("_Trash", now - 60 * day, now))
+        assertTrue(purgeBlocked("_Trash/../Saliva/03.flac", now - 60 * day, now))
+        assertTrue(purgeBlocked("_Trash/.ndignore", now - 60 * day, now))
+        assertTrue(purgeBlocked("_Trash/${SafetyGuard.TRASH_LOG}", now - 60 * day, now))
+    }
+
+    @Test
+    fun theOnlyFilesWrittenAreTheTrashsOwn() {
+        fun writeBlocked(p: String) = try {
+            SafetyGuard.checkTrashWrite(p)
+            false
+        } catch (e: BlockedRequestException) {
+            true
+        }
+        assertFalse(writeBlocked("_Trash/${SafetyGuard.TRASH_LOG}"))
+        assertFalse(writeBlocked("_Trash/.ndignore"))
+        assertTrue(writeBlocked("Saliva/03.flac"))
+        assertTrue(writeBlocked("_Trash/Saliva/03.flac"))
+        assertTrue(writeBlocked(".ndignore"))
+    }
+
     @Test
     fun readingIsAllowed() {
         listOf(

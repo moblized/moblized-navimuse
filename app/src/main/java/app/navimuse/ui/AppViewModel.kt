@@ -131,6 +131,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             recheckedGhosts = true
             recheckGhosts(quiet = true)
         }
+        emptyOldTrash()
         if (settings.value.autoUpdate && !checkedForUpdate) {
             checkedForUpdate = true
             checkForUpdate(manual = false)
@@ -639,10 +640,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** What's in the Trash on the NAS. */
+    /** What's in the Trash on the NAS (after emptying what's been there 30 days, if that's on). */
     suspend fun trash(): List<TrashItem> {
         val share = app.shareLogin.value ?: return emptyList()
-        return withContext(Dispatchers.IO) { MusicShare(share).use { it.trash() } }
+        return withContext(Dispatchers.IO) {
+            MusicShare(share).use { ms ->
+                if (settings.value.trashAutoEmpty) runCatching { ms.emptyOld() }
+                ms.trash()
+            }
+        }
+    }
+
+    private var emptiedTrash = false
+
+    /** Deletes for good the songs 30 days in the Trash: once a session, quietly, when it's on. */
+    private fun emptyOldTrash() {
+        if (emptiedTrash || !settings.value.trashAutoEmpty) return
+        val share = app.shareLogin.value ?: return
+        emptiedTrash = true
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { MusicShare(share).use { it.emptyOld() } }
+        }
     }
 
     /** Puts a song back from the Trash where it was, and has Navidrome pick it up again. */

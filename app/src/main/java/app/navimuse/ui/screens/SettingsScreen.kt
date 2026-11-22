@@ -343,7 +343,7 @@ private fun MusicFolderSettings(vm: AppViewModel) {
     val entered = app.navimuse.net.ShareLogin(server.trim(), share.trim(), folder.trim(), user.trim(), password)
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            "To delete songs, NaviMuse moves them to a _Trash folder in your music share (nothing is deleted for good; put them back from Trash). " +
+            "To delete songs, NaviMuse moves them to a _Trash folder in your music share; put them back from Settings → Playback → Trash. " +
                 "Use the share and folder that hold the music Navidrome reads, and a user that can write there.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -372,6 +372,12 @@ private fun MusicFolderSettings(vm: AppViewModel) {
             },
             modifier = Modifier.fillMaxWidth(),
         )
+        val settings by vm.settings.collectAsState()
+        SwitchRow(
+            "Empty the Trash after ${app.navimuse.net.SafetyGuard.TRASH_DAYS} days",
+            "Songs that have been in the Trash for ${app.navimuse.net.SafetyGuard.TRASH_DAYS} days are deleted from the NAS for good. Off: they stay until you empty _Trash yourself.",
+            settings.trashAutoEmpty,
+        ) { on -> vm.updateSettings { it.copy(trashAutoEmpty = on) } }
         result?.let { (ok, text) ->
             Text(text, style = MaterialTheme.typography.bodySmall, color = if (ok) MaterialTheme.colorScheme.accent else MaterialTheme.colorScheme.error)
         }

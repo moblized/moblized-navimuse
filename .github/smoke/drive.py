@@ -134,11 +134,22 @@ def type_text(s, shows=None):
         print(f"  still no {shows!r} on screen", flush=True)
 
 
+def hide_keyboard():
+    """Puts the on-screen keyboard away, only if it's up (with it down, Escape would mean Back)."""
+    out = adb("shell", "dumpsys", "input_method")
+    if "mInputShown=true" in out or "isInputViewShown=true" in out:
+        adb("shell", "input", "keyevent", "111")
+        time.sleep(0.5)
+
+
 def fill(label, value, shows, tries=3):
     """Types [value] into the field labelled [label], starting it over (tap, clear, retype) if
     the emulator's keyboard drops the text, which it sometimes does on a fresh boot."""
     for attempt in range(tries):
-        tap(text=label) if find(text=label) is not None else tap(text=shows, contains=True)
+        # Keyboard away first: an open keyboard can cover the field, and a tap there types a letter.
+        hide_keyboard()
+        n = find(text=label)
+        tap_node(n if n is not None else scroll_to(label))
         time.sleep(0.5 + attempt)
         if attempt:
             adb("shell", "input", "keycombination", "KEYCODE_CTRL_LEFT", "KEYCODE_A")
@@ -956,10 +967,11 @@ def trash_and_put_back():
     assert find(text="10.0.2.2", contains=True) is not None, "the NAS address didn't start as Navidrome's"
     fill("Share", "music", shows="music")
     fill("SMB username", "smoke", shows="smoke")
-    tap(text="SMB password")
+    hide_keyboard()
+    tap_node(scroll_to("SMB password"))
     time.sleep(0.5)
     type_text("smbpass")
-    adb("shell", "input", "keyevent", "111")
+    hide_keyboard()
     time.sleep(1)
     tap_node(scroll_to("Test"))
     wait_for(text="Works: found", contains=True, timeout=60)
@@ -986,6 +998,11 @@ def trash_and_put_back():
     tap_node(scroll_to("Trash"))
     wait_for(text="Put back", timeout=60)
     shot("15h-trash")
+    # Opening the Trash emptied the song that had been there 40 days; the one just moved stays.
+    old = "music/_Trash/Old Artist/Old Album/01.mp3"
+    assert not os.path.exists(old), "the song 40 days in the Trash wasn't deleted"
+    assert not os.path.exists("music/_Trash/Old Artist"), "its emptied folders weren't removed"
+    assert find(text="deleted for good in", contains=True) is not None, "the Trash doesn't say when songs go"
     tap(text="Put back")
     wait_for(text="The Trash is empty.", timeout=60)
     assert os.path.exists(single) and not os.path.exists(trashed), "Put back didn't put the single back"

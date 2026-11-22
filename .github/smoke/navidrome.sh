@@ -17,6 +17,19 @@ fi
 ffmpeg -version | head -1
 
 mkdir -p "music/Test Artist/Sine Album" "music/Other Artist/Square Album" nd-data
+# The same recording twice: on its single and on an album, for the Duplicates page (and the Trash).
+# Made first, so they're the oldest and sit at the bottom of Recently added.
+mkdir -p "music/Twin Artist/Twin Album" "music/Twin Artist/Twin Tune - Single"
+ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=660:duration=30" \
+  -metadata title="Twin Tune" -metadata artist="Twin Artist" -metadata album_artist="Twin Artist" \
+  -metadata album="Twin Album" -metadata track=1 -metadata date=2022 -metadata genre=Twin \
+  -c:a libmp3lame -b:a 192k "music/Twin Artist/Twin Album/01.mp3"
+ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=660:duration=30" \
+  -metadata title="Twin Tune" -metadata artist="Twin Artist" -metadata album_artist="Twin Artist" \
+  -metadata album="Twin Tune - Single" -metadata track=1 -metadata date=2021 -metadata genre=Twin \
+  -c:a libmp3lame -b:a 128k "music/Twin Artist/Twin Tune - Single/01.mp3"
+
+sleep 2
 for i in 1 2 3 4; do
   ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=$((200 * i)):duration=45" \
     -metadata title="Sine Song $i" -metadata artist="Test Artist" -metadata album_artist="Test Artist" \
@@ -45,17 +58,6 @@ ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=520:duration=30" \
   -metadata title="Vanished Track" -metadata artist="Gone Artist" -metadata album_artist="Gone Artist" \
   -metadata album="Gone Album" -metadata track=1 -metadata date=2021 -metadata genre=Gone \
   -c:a libmp3lame -b:a 128k "music/Gone Artist/Gone Album/01.mp3"
-
-# The same recording twice: on its single and on an album, for the Duplicates page (and the Trash).
-mkdir -p "music/Twin Artist/Twin Album" "music/Twin Artist/Twin Tune - Single"
-ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=660:duration=30" \
-  -metadata title="Twin Tune" -metadata artist="Twin Artist" -metadata album_artist="Twin Artist" \
-  -metadata album="Twin Album" -metadata track=1 -metadata date=2022 -metadata genre=Twin \
-  -c:a libmp3lame -b:a 192k "music/Twin Artist/Twin Album/01.mp3"
-ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=660:duration=30" \
-  -metadata title="Twin Tune" -metadata artist="Twin Artist" -metadata album_artist="Twin Artist" \
-  -metadata album="Twin Tune - Single" -metadata track=1 -metadata date=2021 -metadata genre=Twin \
-  -c:a libmp3lame -b:a 128k "music/Twin Artist/Twin Tune - Single/01.mp3"
 
 # A Dolby Digital Plus 5.1 album in .m4a, like Atmos music: Navidrome can't tell it from AAC,
 # so the app has to look inside the file to show its Dolby badge.
@@ -103,6 +105,13 @@ for _ in $(seq 60); do
 done
 echo "vanishing song: ${gone:-not found}"
 rm -f "music/Gone Artist/Gone Album/01.mp3"
+
+# A song that went into the Trash 40 days ago (by the Trash's log): the app deletes it for good.
+# Put there after the scan, so Navidrome never lists it.
+mkdir -p "music/_Trash/Old Artist/Old Album"
+cp "music/Test Artist/Sine Album/01.mp3" "music/_Trash/Old Artist/Old Album/01.mp3"
+old_ms=$(( ($(date +%s) - 40 * 86400) * 1000 ))
+printf '{"items": {"Old Artist/Old Album/01.mp3": %s}}\n' "$old_ms" > "music/_Trash/.navimuse-trash.json"
 curl -s "$ND/rest/stream?id=$gone&format=raw&$AUTH" | head -c 300; echo
 
 songs=$(curl -fs "$ND/rest/search3?query=Song&songCount=10&$AUTH" | jq -r '.["subsonic-response"].searchResult3.song[].id')
