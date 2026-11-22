@@ -81,9 +81,14 @@ fun ImportScreen(vm: AppViewModel, key: String, onBack: () -> Unit) {
                                 if (p.finished) {
                                     "Found ${p.found.size} of ${p.total} songs in your library" +
                                         when (p.missing.size) {
+                                            0 -> ""
+                                            1 -> "; 1 isn't in it"
+                                            else -> "; ${p.missing.size} aren't in it"
+                                        } +
+                                        when (p.unplayable.size) {
                                             0 -> "."
-                                            1 -> "; 1 isn't in it."
-                                            else -> "; ${p.missing.size} aren't in it."
+                                            1 -> "; 1 is in it but won't play."
+                                            else -> "; ${p.unplayable.size} are in it but won't play."
                                         }
                                 } else {
                                     "Looking for the songs in your library: ${p.done} of ${p.total}…"
@@ -116,6 +121,25 @@ fun ImportScreen(vm: AppViewModel, key: String, onBack: () -> Unit) {
                     }
                     itemsIndexed(p.found, key = { i, song -> "found-$i-${song.id}" }) { i, song ->
                         SongRow(song, onPlay = { vm.play(p.found, i, from = AppViewModel.PlaySource(p.name)) }, isCurrent = player.current?.song?.id == song.id)
+                    }
+                    if (p.unplayable.isNotEmpty()) {
+                        item { SectionHeader("In your library, but won't play (${p.unplayable.size})") }
+                        item {
+                            Text(
+                                "Navidrome lists these but can't open their files, so they're left out. They're on the Ghost songs page now.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                        }
+                        items(p.unplayable, key = { "ghost-${it.id}" }) { song ->
+                            Text(
+                                "${song.title} – ${song.artist}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            )
+                        }
                     }
                     if (p.missing.isNotEmpty()) {
                         item { SectionHeader("Not in your library (${p.missing.size})") }

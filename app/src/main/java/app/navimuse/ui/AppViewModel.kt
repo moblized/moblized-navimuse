@@ -698,6 +698,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val done: Int,
         val found: List<Song>,
         val missing: List<WantedSong>,
+        /** In your library, but its file won't play (a ghost song): left out of the playlist. */
+        val unplayable: List<Song> = emptyList(),
     ) {
         val finished: Boolean get() = done >= total
     }
@@ -729,6 +731,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (wanted.isEmpty()) throw IllegalStateException("No songs came back from that. Check the link or the list.")
         val results = arrayOfNulls<Song>(wanted.size)
+        val wontPlay = arrayOfNulls<Song>(wanted.size)
         var done = 0
         fun report() = onProgress(
             ImportProgress(
@@ -736,15 +739,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 wanted.size,
                 done,
                 (0 until done).mapNotNull { results[it] },
-                (0 until done).filter { results[it] == null }.map { wanted[it] },
+                (0 until done).filter { results[it] == null && wontPlay[it] == null }.map { wanted[it] },
+                (0 until done).mapNotNull { wontPlay[it] },
             ),
         )
         report()
-        // A few searches at a time, so a long playlist is quick without crowding the server.
+        // A few searches at a time, so a long playlist is quick without crowding the server. Each
+        // song found is tried (the first byte of its file), so only songs that play get in.
         wanted.indices.chunked(6).forEach { batch ->
             coroutineScope {
-                batch.map { i -> async { i to findInLibrary(wanted[i]) } }.awaitAll()
-            }.forEach { (i, song) -> results[i] = song }
+                batch.map { i ->
+                    async<Triple<Int, Song?, Song?>> {
+                        val song = findInLibrary(wanted[i]) ?: return@async Triple(i, null, null)
+                        val check = runCatching { probe(song.id) }.getOrNull()
+                        if (check != null && check.ghostly()) {
+                            GhostSongs.mark(song, SongTrouble.reason(check))
+                            Triple(i, null, song)
+                        } else {
+                            Triple(i, song, null)
+                        }
+                    }
+                }.awaitAll()
+            }.forEach { (i, song, ghost) ->
+                results[i] = song
+                wontPlay[i] = ghost
+            }
             done = batch.last() + 1
             report()
         }
