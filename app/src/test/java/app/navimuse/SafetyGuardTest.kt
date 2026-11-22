@@ -35,11 +35,102 @@ class SafetyGuardTest {
     @Test
     fun otherChangingRequestsAreBlocked() {
         listOf(
-            "startScan", "savePlayQueue", "savePlayQueueByIndex", "createShare", "updateShare", "createUser",
+            "savePlayQueue", "savePlayQueueByIndex", "createShare", "updateShare", "createUser",
             "updateUser", "changePassword", "jukeboxControl", "createInternetRadioStation", "updateInternetRadioStation",
             "refreshPodcasts", "createPodcastChannel", "downloadPodcastEpisode", "createBookmark", "setRating",
             "download", "somethingNew",
         ).forEach { assertTrue("$it must be blocked", blocked(it)) }
+    }
+
+    @Test
+    fun onlyAQuickScan() {
+        assertFalse(blocked("startScan"))
+        assertFalse(blocked("startScan", "fullScan" to "false"))
+        assertTrue(blocked("startScan", "fullScan" to "true"))
+    }
+
+    private fun nativeBlocked(method: String, path: String) = try {
+        SafetyGuard.checkNavidromeNative(method, path)
+        false
+    } catch (e: BlockedRequestException) {
+        true
+    }
+
+    @Test
+    fun navidromesOwnApiOnlySignsInAndReadsASong() {
+        assertFalse(nativeBlocked("POST", "/auth/login"))
+        assertFalse(nativeBlocked("POST", "/music/auth/login"))
+        assertFalse(nativeBlocked("GET", "/api/song/a1B2-c3_d4"))
+        assertFalse(nativeBlocked("GET", "/navidrome/api/song/abc?x=1"))
+        assertTrue(nativeBlocked("DELETE", "/api/song/abc"))
+        assertTrue(nativeBlocked("DELETE", "/api/missing"))
+        assertTrue(nativeBlocked("PUT", "/api/song/abc"))
+        assertTrue(nativeBlocked("GET", "/api/user"))
+        assertTrue(nativeBlocked("GET", "/api/song/../user"))
+        assertTrue(nativeBlocked("POST", "/api/playlist"))
+    }
+
+    private fun moveBlocked(from: String, to: String) = try {
+        SafetyGuard.checkMove(from, to)
+        false
+    } catch (e: BlockedRequestException) {
+        true
+    }
+
+    @Test
+    fun filesOnlyMoveIntoTheTrashAndBack() {
+        val song = "Saliva/Every Twenty Years/03 - Your Disease.flac"
+        assertFalse(moveBlocked(song, "_Trash/$song"))
+        assertFalse(moveBlocked("_Trash/$song", song))
+        // Anywhere else, or a different place inside the Trash: no.
+        assertTrue(moveBlocked(song, "Saliva/Other/03.flac"))
+        assertTrue(moveBlocked(song, "_Trash/elsewhere.flac"))
+        assertTrue(moveBlocked("_Trash/$song", "Saliva/x.flac"))
+        assertTrue(moveBlocked(song, "_Trash/../$song"))
+        assertTrue(moveBlocked("../$song", "_Trash/../$song"))
+        assertTrue(moveBlocked("", "_Trash/"))
+        assertTrue(moveBlocked("_Trash/$song", "_Trash/$song"))
+    }
+
+    private fun purgeBlocked(path: String, trashedAt: Long, now: Long) = try {
+        SafetyGuard.checkPurge(path, trashedAt, now)
+        false
+    } catch (e: BlockedRequestException) {
+        true
+    }
+
+    @Test
+    fun onlySongsThirtyDaysInTheTrashAreDeleted() {
+        val day = 24L * 60 * 60 * 1000
+        val now = 100 * day
+        val inTrash = "_Trash/Saliva/Every Twenty Years/03.flac"
+        assertFalse(purgeBlocked(inTrash, now - 30 * day, now))
+        assertFalse(purgeBlocked(inTrash, now - 45 * day, now))
+        // Too soon, unknown time, or a time in the future: kept.
+        assertTrue(purgeBlocked(inTrash, now - 29 * day, now))
+        assertTrue(purgeBlocked(inTrash, 0, now))
+        assertTrue(purgeBlocked(inTrash, now + day, now))
+        // Never anything outside the Trash, the Trash itself, or its own files.
+        assertTrue(purgeBlocked("Saliva/Every Twenty Years/03.flac", now - 60 * day, now))
+        assertTrue(purgeBlocked("_Trash", now - 60 * day, now))
+        assertTrue(purgeBlocked("_Trash/../Saliva/03.flac", now - 60 * day, now))
+        assertTrue(purgeBlocked("_Trash/.ndignore", now - 60 * day, now))
+        assertTrue(purgeBlocked("_Trash/${SafetyGuard.TRASH_LOG}", now - 60 * day, now))
+    }
+
+    @Test
+    fun theOnlyFilesWrittenAreTheTrashsOwn() {
+        fun writeBlocked(p: String) = try {
+            SafetyGuard.checkTrashWrite(p)
+            false
+        } catch (e: BlockedRequestException) {
+            true
+        }
+        assertFalse(writeBlocked("_Trash/${SafetyGuard.TRASH_LOG}"))
+        assertFalse(writeBlocked("_Trash/.ndignore"))
+        assertTrue(writeBlocked("Saliva/03.flac"))
+        assertTrue(writeBlocked("_Trash/Saliva/03.flac"))
+        assertTrue(writeBlocked(".ndignore"))
     }
 
     @Test

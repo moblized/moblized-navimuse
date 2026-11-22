@@ -23,7 +23,7 @@ object SafetyGuard {
      * Requests that only add something or record what you listened to. None of them can remove
      * a song, a file or a playlist. They're still checked in detail below.
      */
-    private val additive = setOf("createPlaylist", "updatePlaylist", "star", "unstar", "scrobble")
+    private val additive = setOf("createPlaylist", "updatePlaylist", "star", "unstar", "scrobble", "startScan")
 
     /** The only parameters [updatePlaylist] may carry: which playlist, and songs to add to it. */
     private val updatePlaylistParams = setOf("playlistId", "songIdToAdd")
@@ -52,6 +52,12 @@ object SafetyGuard {
                     )
                 }
             }
+            name == "startScan" -> {
+                // A quick scan, after a song is moved to the Trash or put back. Never the full one.
+                if (params.any { it.first == "fullScan" && it.second != "false" }) {
+                    throw BlockedRequestException(name, "Only a quick scan is allowed.")
+                }
+            }
             name == "updatePlaylist" -> {
                 if ("playlistId" !in keys) throw BlockedRequestException(name, "No playlist given.")
                 val extra = keys - updatePlaylistParams
@@ -62,6 +68,75 @@ object SafetyGuard {
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Requests to Navidrome's own (non-Subsonic) API: signing in, and reading one song's details
+     * to learn where its file really is. Nothing that changes anything.
+     */
+    fun checkNavidromeNative(httpMethod: String, path: String) {
+        val clean = "/" + path.substringBefore('?').trim('/')
+        val m = httpMethod.uppercase()
+        val ok = (m == "POST" && clean.endsWith("/auth/login")) ||
+            (m == "GET" && Regex(".*/api/song/[A-Za-z0-9_-]+$").matches(clean))
+        if (!ok) throw BlockedRequestException("$m $clean", "Navidrome request \"$m $clean\" isn't allowed, so it was never sent.")
+    }
+
+    /** The music share's Trash folder. A file only ever moves into it, or back out to where it was. */
+    const val TRASH = "_Trash"
+
+    /**
+     * Checks a file move on your music share (paths relative to the music folder, "/" between
+     * folders). The only moves allowed are a song into the Trash at the same place inside it, and
+     * back out again: nothing is ever deleted, overwritten or moved anywhere else.
+     */
+    fun checkMove(from: String, to: String) {
+        fun parts(p: String) = p.replace('\\', '/').split('/').filter { it.isNotEmpty() }
+        val a = parts(from)
+        val b = parts(to)
+        val bad = (a + b).any { it == ".." || it == "." } || a.isEmpty() || b.isEmpty()
+        val intoTrash = a.firstOrNull() != TRASH && b.firstOrNull() == TRASH && b.drop(1) == a
+        val outOfTrash = a.firstOrNull() == TRASH && b.firstOrNull() != TRASH && a.drop(1) == b
+        if (bad || !(intoTrash || outOfTrash)) {
+            throw BlockedRequestException("move", "Moving \"$from\" to \"$to\" isn't allowed: songs only go into the Trash and back.")
+        }
+    }
+
+    /** Where the Trash keeps when each song went in (so it can be emptied after [TRASH_DAYS]). */
+    const val TRASH_LOG = ".navimuse-trash.json"
+
+    /** How long a song stays in the Trash before it's deleted for good (when that's turned on). */
+    const val TRASH_DAYS = 30
+
+    private const val DAY_MS = 24L * 60 * 60 * 1000
+
+    /** The only file the app writes on the share: the Trash's own log of when songs went in. */
+    fun checkTrashWrite(path: String) {
+        val p = path.replace('\\', '/').trim('/')
+        if (p != "$TRASH/$TRASH_LOG" && p != "$TRASH/.ndignore") {
+            throw BlockedRequestException("write", "Writing \"$path\" isn't allowed: only the Trash's own files.")
+        }
+    }
+
+    /**
+     * The only deletion the app ever makes: a song that has been in the Trash for at least [days]
+     * days (by the Trash's own log), deleted for good. Nothing outside the Trash, and never the
+     * Trash's own files.
+     */
+    fun checkPurge(path: String, trashedAt: Long, now: Long, days: Int = TRASH_DAYS) {
+        val parts = path.replace('\\', '/').split('/').filter { it.isNotEmpty() }
+        val ok = parts.size >= 2 && parts.first() == TRASH && parts.none { it == ".." || it == "." } &&
+            parts.last() != TRASH_LOG && parts.last() != ".ndignore" &&
+            days >= 1 && trashedAt > 0 && now - trashedAt >= days * DAY_MS
+        if (!ok) throw BlockedRequestException("delete", "Deleting \"$path\" isn't allowed: only songs $days days in the Trash.")
+    }
+
+    /** Removing an emptied folder inside the Trash (never the Trash itself, never anything outside it). */
+    fun checkRemoveFolder(path: String) {
+        val parts = path.replace('\\', '/').split('/').filter { it.isNotEmpty() }
+        if (parts.size < 2 || parts.first() != TRASH || parts.any { it == ".." || it == "." }) {
+            throw BlockedRequestException("rmdir", "Removing the folder \"$path\" isn't allowed.")
         }
     }
 

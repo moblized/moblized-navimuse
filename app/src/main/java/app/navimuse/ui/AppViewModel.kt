@@ -13,11 +13,19 @@ import app.navimuse.playback.AudioCache
 import app.navimuse.net.Credit
 import app.navimuse.data.Look
 import app.navimuse.data.Mood
+import app.navimuse.playback.SongTrouble
+import app.navimuse.playback.StreamCheck
+import app.navimuse.data.Duplicates
+import app.navimuse.data.GhostSongs
 import app.navimuse.data.SongLists
 import app.navimuse.data.SongMatch
 import app.navimuse.data.TitleWords
 import app.navimuse.data.WantedSong
+import app.navimuse.net.MusicShare
+import app.navimuse.net.NavidromeNative
+import app.navimuse.net.ShareLogin
 import app.navimuse.net.TidalClient
+import app.navimuse.net.TrashItem
 import app.navimuse.net.TidalLinks
 import app.navimuse.net.TidalLogin
 import app.navimuse.data.Settings
@@ -49,6 +57,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -117,6 +126,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         player.connect()
         if (serverInfo.value == null) refreshServerInfo()
         syncDownloads()
+        // Ghost songs whose files came back stop being ghosts (once a session, quietly).
+        if (!recheckedGhosts) {
+            recheckedGhosts = true
+            recheckGhosts(quiet = true)
+        }
+        emptyOldTrash()
         if (settings.value.autoUpdate && !checkedForUpdate) {
             checkedForUpdate = true
             checkForUpdate(manual = false)
@@ -257,16 +272,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun play(songs: List<Song>, index: Int = 0, shuffle: Boolean = false, from: PlaySource? = null) {
         if (app.api() == null) return
+        // Ghost songs (see GhostSongs) are left out; the one tapped can't be one.
+        val picked = songs.getOrNull(index)
+        if (picked != null && GhostSongs.isGhost(picked)) {
+            say("\"${picked.title}\" is a ghost song: Navidrome lists it but can't find its file. See Settings → Playback → Ghost songs.")
+            return
+        }
+        val playable = GhostSongs.playable(songs)
+        if (playable.isEmpty()) return
         _source.value = from
-        player.play(songs, index, shuffle)
+        player.play(playable, picked?.let { p -> playable.indexOfFirst { it.id == p.id } }?.coerceAtLeast(0) ?: 0, shuffle)
     }
 
     fun playNext(songs: List<Song>) {
+        @Suppress("NAME_SHADOWING")
+        val songs = GhostSongs.playable(songs)
+        if (songs.isEmpty()) return
         player.playNext(songs)
         say(if (songs.size == 1) "Plays next: ${songs[0].title}" else "${songs.size} songs play next")
     }
 
     fun addToQueue(songs: List<Song>) {
+        @Suppress("NAME_SHADOWING")
+        val songs = GhostSongs.playable(songs)
+        if (songs.isEmpty()) return
         player.addToQueue(songs)
         say(if (songs.size == 1) "Added to queue: ${songs[0].title}" else "Added ${songs.size} songs to the queue")
     }
@@ -424,6 +453,229 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         TitleMix(songs, note)
     }
 
+    // --- ghost songs ------------------------------------------------------------------------
+
+    /** A look through the whole library for ghost songs, while it runs. */
+    data class GhostScan(val checked: Int, val found: Int, val done: Boolean = false, val error: String? = null)
+
+    private val _ghostScan = MutableStateFlow<GhostScan?>(null)
+    val ghostScan: StateFlow<GhostScan?> = _ghostScan.asStateFlow()
+    private var ghostJob: Job? = null
+    private var recheckedGhosts = false
+
+    /** What the server sends for song [id]'s original file: one byte of audio is enough to know it's there. */
+    private suspend fun probe(id: String): StreamCheck = StreamCheck.run(app.http, api().streamUrl(id, 0), range = 1)
+
+    /**
+     * Looks at every song in the library for ghost songs, a few at a time, by asking for the
+     * first byte of each file. Read-only, and no play is reported to Navidrome.
+     */
+    fun lookForGhosts() {
+        if (ghostJob?.isActive == true) return
+        ghostJob = viewModelScope.launch {
+            var checked = 0
+            var found = 0
+            _ghostScan.value = GhostScan(0, 0)
+            try {
+                var offset = 0
+                while (true) {
+                    val page = api().allSongs(offset, 500)
+                    if (page.isEmpty()) break
+                    page.chunked(6).forEach { batch ->
+                        coroutineScope {
+                            batch.map { s -> async { s to runCatching { probe(s.id) }.getOrDefault(StreamCheck.Unreachable) } }.awaitAll()
+                        }.forEach { (s, check) ->
+                            if (check.ghostly()) {
+                                GhostSongs.mark(s, SongTrouble.reason(check))
+                                found++
+                            } else if (check == StreamCheck.Audio) {
+                                GhostSongs.clear(s.id)
+                            }
+                        }
+                        checked += batch.size
+                        _ghostScan.value = GhostScan(checked, found)
+                    }
+                    if (page.size < 500) break
+                    offset += page.size
+                }
+                _ghostScan.value = GhostScan(checked, found, done = true)
+            } catch (e: CancellationException) {
+                _ghostScan.value = GhostScan(checked, found, done = true, error = "Stopped.")
+                throw e
+            } catch (e: Exception) {
+                _ghostScan.value = GhostScan(checked, found, done = true, error = friendly(e))
+            }
+        }
+    }
+
+    fun stopLookingForGhosts() {
+        ghostJob?.cancel()
+    }
+
+    /**
+     * Tries the ghost songs again; any that play now (the file came back, or Navidrome was
+     * rescanned) stop being ghosts. [quiet] for the check made when the app opens.
+     */
+    fun recheckGhosts(quiet: Boolean = false) {
+        val ghosts = GhostSongs.all.value.keys.toList()
+        if (ghosts.isEmpty()) {
+            if (!quiet) say("No ghost songs.")
+            return
+        }
+        viewModelScope.launch {
+            var back = 0
+            ghosts.chunked(6).forEach { batch ->
+                coroutineScope { batch.map { id -> async { id to runCatching { probe(id) }.getOrNull() } }.awaitAll() }
+                    .forEach { (id, check) ->
+                        if (check == StreamCheck.Audio) {
+                            GhostSongs.clear(id)
+                            back++
+                        }
+                    }
+            }
+            if (!quiet) say(if (back == 0) "Still ghosts, all ${ghosts.size}." else "$back song${if (back == 1) " plays" else "s play"} again.")
+        }
+    }
+
+    /** A check that means the song's file isn't there (or can't be read): a ghost song. */
+    private fun StreamCheck.ghostly(): Boolean =
+        this == StreamCheck.Empty || (this is StreamCheck.Refused && songOnly)
+
+    // --- duplicates, and moving songs to the Trash on the NAS -------------------------------
+
+    val shareLogin: StateFlow<ShareLogin?> get() = app.shareLogin
+
+    fun saveShare(login: ShareLogin?) {
+        app.saveShare(login)
+        say(if (login == null) "Music folder removed" else "Music folder saved")
+    }
+
+    /** Tries [login]: finds one of your songs' files on the share, and says where. */
+    suspend fun testShare(login: ShareLogin): String {
+        val song = api().allSongs(0, 1).firstOrNull() ?: throw IllegalStateException("Your library has no songs to look for.")
+        val file = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in.")).songFile(song.id)
+        val found = withContext(Dispatchers.IO) { MusicShare(login).use { it.locate(file.path) } }
+            ?: throw IllegalStateException(
+                "Signed in, but \"${file.path}\" isn't in that folder. Set Folder to the one Navidrome reads as its music folder.",
+            )
+        return "Works: found $found."
+    }
+
+    private val dupPrefs by lazy { app.getSharedPreferences("navimuse_duplicates", android.content.Context.MODE_PRIVATE) }
+    private fun dismissedDuplicates(): Set<String> = dupPrefs.getStringSet("dismissed", emptySet()).orEmpty()
+
+    /** A look through the library for duplicates, and what it found. */
+    data class DuplicateScan(val songs: Int, val groups: List<Duplicates.Group>, val done: Boolean, val error: String? = null)
+
+    private val _duplicates = MutableStateFlow<DuplicateScan?>(null)
+    val duplicates: StateFlow<DuplicateScan?> = _duplicates.asStateFlow()
+    private var duplicateJob: Job? = null
+
+    /** Reads every song in the library and groups the same song found more than once. */
+    fun lookForDuplicates() {
+        if (duplicateJob?.isActive == true) return
+        duplicateJob = viewModelScope.launch {
+            val all = ArrayList<Song>()
+            _duplicates.value = DuplicateScan(0, emptyList(), done = false)
+            try {
+                var offset = 0
+                while (true) {
+                    val page = api().allSongs(offset, 500)
+                    all += page
+                    _duplicates.value = DuplicateScan(all.size, emptyList(), done = false)
+                    if (page.size < 500) break
+                    offset += page.size
+                }
+                val groups = withContext(Dispatchers.Default) { Duplicates.find(all, GhostSongs::isGhost, dismissedDuplicates()) }
+                _duplicates.value = DuplicateScan(all.size, groups, done = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _duplicates.value = DuplicateScan(all.size, emptyList(), done = true, error = friendly(e))
+            }
+        }
+    }
+
+    /** Group [key] isn't really duplicates: never show it again. */
+    fun notDuplicates(key: String) {
+        dupPrefs.edit().putStringSet("dismissed", dismissedDuplicates() + key).apply()
+        _duplicates.update { s -> s?.copy(groups = s.groups.filterNot { it.key == key }) }
+    }
+
+    /**
+     * Moves [song]'s file to the Trash folder in your music folder on the NAS (nothing is deleted;
+     * Put back undoes it). NaviMuse stops showing it at once, and asks Navidrome for a quick scan
+     * so it drops off Navidrome's lists too (if you're an admin; otherwise the next scan does it).
+     */
+    fun moveToTrash(song: Song) {
+        viewModelScope.launch {
+            try {
+                val share = app.shareLogin.value
+                    ?: throw IllegalStateException("Set up your music folder first: Settings → General → Music folder (SMB).")
+                val native = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in."))
+                val file = native.songFile(song.id)
+                val trashed = withContext(Dispatchers.IO) {
+                    MusicShare(share).use { ms ->
+                        val rel = ms.locate(file.path)
+                            ?: throw IllegalStateException("Couldn't find \"${file.path}\" in your music folder, so nothing was moved. Check Settings → Music folder.")
+                        ms.moveToTrash(rel)
+                    }
+                }
+                GhostSongs.mark(song, "Moved to the Trash ($trashed)")
+                _duplicates.update { s ->
+                    s?.copy(
+                        groups = s.groups.mapNotNull { g ->
+                            val left = g.songs.filterNot { it.id == song.id }
+                            if (left.size < 2) null else g.copy(songs = left, keep = g.keep?.takeIf { it != song.id })
+                        },
+                    )
+                }
+                val scanned = runCatching { if (native.admin()) api().startQuickScan() else null }.getOrNull() != null
+                say("Moved \"${song.title}\" to the Trash." + if (scanned) "" else " Navidrome drops it at its next scan.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                say(friendly(e))
+            }
+        }
+    }
+
+    /** What's in the Trash on the NAS (after emptying what's been there 30 days, if that's on). */
+    suspend fun trash(): List<TrashItem> {
+        val share = app.shareLogin.value ?: return emptyList()
+        return withContext(Dispatchers.IO) {
+            MusicShare(share).use { ms ->
+                if (settings.value.trashAutoEmpty) runCatching { ms.emptyOld() }
+                ms.trash()
+            }
+        }
+    }
+
+    private var emptiedTrash = false
+
+    /** Deletes for good the songs 30 days in the Trash: once a session, quietly, when it's on. */
+    private fun emptyOldTrash() {
+        if (emptiedTrash || !settings.value.trashAutoEmpty) return
+        val share = app.shareLogin.value ?: return
+        emptiedTrash = true
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { MusicShare(share).use { it.emptyOld() } }
+        }
+    }
+
+    /** Puts a song back from the Trash where it was, and has Navidrome pick it up again. */
+    suspend fun putBack(item: TrashItem) {
+        val share = app.shareLogin.value ?: throw IllegalStateException("No music folder set up.")
+        val back = withContext(Dispatchers.IO) { MusicShare(share).use { it.putBack(item.path) } }
+        runCatching {
+            val native = NavidromeNative(app.http, app.login.value ?: return@runCatching)
+            if (native.admin()) api().startQuickScan()
+        }
+        // It's where Navidrome expects it again: it plays, so it's no ghost.
+        recheckGhosts(quiet = true)
+        say("Put back: $back")
+    }
+
     // --- importing playlists (TIDAL links, song lists) -------------------------------------
 
     val tidalLogin: StateFlow<TidalLogin?> get() = app.tidalLogin
@@ -503,7 +755,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         suspend fun look(q: String, n: Int, want: WantedSong): Song? {
             if (q.isBlank()) return null
             val hits = runCatching { api().search(q, songs = n, albums = 0, artists = 0).songs }.getOrDefault(emptyList())
-            return SongMatch.best(want, hits)
+            // A ghost song (see GhostSongs) doesn't count as having it.
+            return SongMatch.best(want, GhostSongs.playable(hits))
         }
         return look(SongMatch.query(w), 10, w)
             // The title alone: the artist may be written differently.

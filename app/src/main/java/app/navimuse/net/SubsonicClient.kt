@@ -162,6 +162,26 @@ class SubsonicClient(
             ),
         )
 
+    /** A page of every song in the library (search3 with an empty query), [count] from [offset]. */
+    suspend fun allSongs(offset: Int, count: Int = 500): List<Song> =
+        Parse.search(
+            call(
+                "search3",
+                listOf(
+                    "query" to "",
+                    "songCount" to count.toString(),
+                    "songOffset" to offset.toString(),
+                    "albumCount" to "0",
+                    "artistCount" to "0",
+                ),
+            ),
+        ).songs
+
+    /** Asks Navidrome for a quick scan (admins only), so a song moved to the Trash drops off its lists. */
+    suspend fun startQuickScan() {
+        call("startScan")
+    }
+
     suspend fun starred(): Starred = Parse.starred(call("getStarred2"))
 
     suspend fun genres(): List<Genre> = Parse.genres(call("getGenres"))

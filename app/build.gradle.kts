@@ -46,6 +46,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    packaging {
+        resources {
+            // smbj and BouncyCastle ship these; the app needs none of them.
+            excludes += setOf("META-INF/DEPENDENCIES", "META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/LICENSE*", "META-INF/NOTICE*")
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -99,6 +106,9 @@ dependencies {
 
     // Subsonic API calls to Navidrome (and the optional AudioMuse-AI mood search)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Moving deleted songs to the Trash folder of the music share on the NAS (SMB 2/3).
+    implementation("com.hierynomus:smbj:0.13.0")
 
     // Album art, and the colour pulled from it for page backgrounds
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")

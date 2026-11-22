@@ -270,6 +270,33 @@ fun ImportPlaylistDialog(
     )
 }
 
+/**
+ * Asks before moving a song's file to the Trash on the NAS. Without a music folder set up, says
+ * how to set one up instead.
+ */
+@Composable
+fun TrashSongDialog(song: Song, ready: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit, onSetUp: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (ready) "Move to Trash?" else "Set up your music folder") },
+        text = {
+            Text(
+                if (ready) {
+                    "\"${song.title}\" (${song.album.ifBlank { song.artist }}) moves to the _Trash folder in your music share, " +
+                        "and Navidrome stops listing it. You can put it back from Settings → Playback → Trash; after " +
+                        "${app.navimuse.net.SafetyGuard.TRASH_DAYS} days there it's deleted for good (unless that's turned off)."
+                } else {
+                    "To delete songs, NaviMuse needs your music share on the NAS. Set it up in Settings → General → Music folder (SMB)."
+                },
+            )
+        },
+        confirmButton = {
+            if (ready) TextButton(onClick = onConfirm) { Text("Move to Trash") } else TextButton(onClick = onSetUp) { Text("Set up") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 /** Search for one song (used to pick the ends of a song path, or a mix seed). */
 @Composable
 fun SongPickerDialog(title: String, onDismiss: () -> Unit, onPick: (Song) -> Unit) {
