@@ -103,12 +103,14 @@ done
 echo "albums: $n"
 
 # Once Navidrome has the vanishing song, take its file away (the watcher is off, so it doesn't notice).
+# Both of its songs: the scan can list one a moment before the other.
 for _ in $(seq 60); do
   gone=$(curl -fs "$ND/rest/search3?query=Vanished&songCount=5&$AUTH" | jq -r '.["subsonic-response"].searchResult3.song[0].id // empty' || true)
-  [ -n "$gone" ] && break
+  faded=$(curl -fs "$ND/rest/search3?query=Faded&songCount=5&$AUTH" | jq -r '.["subsonic-response"].searchResult3.song[0].id // empty' || true)
+  [ -n "$gone" ] && [ -n "$faded" ] && break
   sleep 2
 done
-echo "vanishing song: ${gone:-not found}"
+echo "vanishing songs: ${gone:-not found}, ${faded:-not found}"
 rm -f "music/Gone Artist/Gone Album/01.mp3" "music/Gone Artist/Gone Album/02.mp3"
 
 # A song that went into the Trash 40 days ago (by the Trash's log): the app deletes it for good.

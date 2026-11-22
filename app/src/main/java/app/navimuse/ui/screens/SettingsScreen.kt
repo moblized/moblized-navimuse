@@ -251,7 +251,17 @@ private fun PlaybackSettings(vm: AppViewModel) {
     SwitchedSongsRow()
     GhostSongsRow()
     LinkRow("Duplicates", "The same song more than once: find them, keep the best copy.", Icons.Filled.ContentCopy, Route.Duplicates)
-    LinkRow("Trash", "Songs you deleted, on your NAS. Put them back from here.", Icons.Filled.Delete, Route.Trash)
+    val waitingForHome by vm.trashQueue.collectAsState()
+    LinkRow(
+        "Trash",
+        when (waitingForHome.size) {
+            0 -> "Songs you deleted, on your NAS. Put them back from here."
+            1 -> "1 song waiting to move there next time you're on home Wi-Fi."
+            else -> "${waitingForHome.size} songs waiting to move there next time you're on home Wi-Fi."
+        },
+        Icons.Filled.Delete,
+        Route.Trash,
+    )
     Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text("Instant Mix length: ${settings.mixSize} songs", style = MaterialTheme.typography.bodyLarge)
         Slider(
@@ -349,7 +359,15 @@ private fun MusicFolderSettings(vm: AppViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedTextField(server, { server = it }, label = { Text("NAS address") }, placeholder = { Text("truenas.local") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(share, { share = it }, label = { Text("Share") }, placeholder = { Text("music") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            share,
+            { share = it },
+            label = { Text("Share") },
+            placeholder = { Text("media") },
+            supportingText = { Text("The share's name on your NAS (TrueNAS: Shares → Windows (SMB) Shares), not its address") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
         OutlinedTextField(
             folder,
             { folder = it },
@@ -382,8 +400,9 @@ private fun MusicFolderSettings(vm: AppViewModel) {
             Text(text, style = MaterialTheme.typography.bodySmall, color = if (ok) MaterialTheme.colorScheme.accent else MaterialTheme.colorScheme.error)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            val ready = server.isNotBlank() && share.isNotBlank() && user.isNotBlank()
-            Button(onClick = { vm.saveShare(entered) }, enabled = ready) { Text("Save") }
+            val ready = server.isNotBlank() && (share.isNotBlank() || folder.isNotBlank()) && user.isNotBlank()
+            // Saved tidied (say, the NAS address typed again in Share); Test finds the right split.
+            Button(onClick = { vm.saveShare(app.navimuse.net.ShareGuess.guesses(entered).firstOrNull() ?: entered) }, enabled = ready) { Text("Save") }
             OutlinedButton(
                 enabled = ready && !testing,
                 onClick = {
@@ -391,7 +410,8 @@ private fun MusicFolderSettings(vm: AppViewModel) {
                     result = null
                     scope.launch {
                         result = try {
-                            true to vm.testShare(entered)
+                            // A working music folder is saved, so the fields show what it is.
+                            true to vm.testShare(entered).message
                         } catch (e: Exception) {
                             false to friendly(e)
                         }
@@ -409,7 +429,10 @@ private fun MusicFolderSettings(vm: AppViewModel) {
 @Composable
 private fun GhostSongsRow() {
     val ui = LocalUi.current
-    val ghosts by app.navimuse.data.GhostSongs.all.collectAsState()
+    val allGhosts by app.navimuse.data.GhostSongs.all.collectAsState()
+    // Songs waiting to move to the Trash are on the Trash page instead.
+    val waiting by app.navimuse.data.TrashQueue.all.collectAsState()
+    val ghosts = allGhosts.filterKeys { id -> waiting.none { it.songId == id } }
     ListItem(
         headlineContent = { Text(if (ghosts.isEmpty()) "Ghost songs" else "Ghost songs (${ghosts.size})") },
         supportingContent = {

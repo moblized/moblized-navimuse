@@ -26,6 +26,11 @@ import app.navimuse.net.NavidromeNative
 import app.navimuse.net.ShareLogin
 import app.navimuse.net.TidalClient
 import app.navimuse.net.TrashItem
+import app.navimuse.net.NoSuchShare
+import app.navimuse.net.ShareGuess
+import app.navimuse.data.TrashQueue
+import app.navimuse.trash.TrashMover
+import app.navimuse.trash.TrashQueueWorker
 import app.navimuse.net.TidalLinks
 import app.navimuse.net.TidalLogin
 import app.navimuse.data.Settings
@@ -132,6 +137,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             recheckGhosts(quiet = true)
         }
         emptyOldTrash()
+        moveWaitingSongs()
         if (settings.value.autoUpdate && !checkedForUpdate) {
             checkedForUpdate = true
             checkForUpdate(manual = false)
@@ -517,7 +523,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * rescanned) stop being ghosts. [quiet] for the check made when the app opens.
      */
     fun recheckGhosts(quiet: Boolean = false) {
-        val ghosts = GhostSongs.all.value.keys.toList()
+        // Not the ones waiting to move to the Trash: they're hidden on purpose.
+        val ghosts = GhostSongs.all.value.keys.filterNot(TrashQueue::has)
         if (ghosts.isEmpty()) {
             if (!quiet) say("No ghost songs.")
             return
@@ -550,15 +557,47 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         say(if (login == null) "Music folder removed" else "Music folder saved")
     }
 
-    /** Tries [login]: finds one of your songs' files on the share, and says where. */
-    suspend fun testShare(login: ShareLogin): String {
+    /** What Test found: the music folder that works (maybe tidied from what you typed), and where. */
+    data class ShareTest(val login: ShareLogin, val message: String)
+
+    /**
+     * Tries [entered]: finds one of your songs' files on the share, and says where. What you typed
+     * is read kindly (the NAS address in Share, the whole path in Folder): the share and folder
+     * splits it could mean are tried in turn, and the one that works is saved.
+     */
+    suspend fun testShare(entered: ShareLogin): ShareTest {
+        val guesses = ShareGuess.guesses(entered)
+        if (guesses.isEmpty()) throw IllegalStateException("Fill in the NAS address and Share (the share's name on your NAS, like \"media\").")
+        val host = guesses[0].server
+        if (!TrashMover.reachable(host)) throw IllegalStateException("Can't reach $host from here. Test this on your home Wi-Fi.")
         val song = api().allSongs(0, 1).firstOrNull() ?: throw IllegalStateException("Your library has no songs to look for.")
         val file = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in.")).songFile(song.id)
-        val found = withContext(Dispatchers.IO) { MusicShare(login).use { it.locate(file.path) } }
-            ?: throw IllegalStateException(
-                "Signed in, but \"${file.path}\" isn't in that folder. Set Folder to the one Navidrome reads as its music folder.",
+        val missing = ArrayList<String>()
+        var opened: ShareLogin? = null
+        for (g in guesses) {
+            val found = try {
+                withContext(Dispatchers.IO) { MusicShare(g).use { it.locate(file.path) } }
+            } catch (e: NoSuchShare) {
+                missing += e.share
+                continue
+            }
+            if (found != null) {
+                app.saveShare(g)
+                val tidied = g.share != entered.share.trim() || g.folder != entered.folder.trim().trim('/', '\\') || g.server != entered.server.trim()
+                val where = if (g.folder.isEmpty()) "Share \"${g.share}\" (the whole share)" else "Share \"${g.share}\", Folder \"${g.folder}\""
+                return ShareTest(g, "Works: found $found." + if (tidied) " Set to $where and saved." else " Saved.")
+            }
+            if (opened == null) opened = g
+        }
+        opened?.let {
+            throw IllegalStateException(
+                "Opened the share \"${it.share}\", but \"${file.path}\" isn't in it. Set Folder to the one that holds the music Navidrome reads.",
             )
-        return "Works: found $found."
+        }
+        throw IllegalStateException(
+            "There's no share called " + missing.distinct().joinToString(" or ") { "\"$it\"" } + " on $host. " +
+                "Share is the share's name as your NAS lists it (TrueNAS: Shares → Windows (SMB) Shares), not the NAS address.",
+        )
     }
 
     private val dupPrefs by lazy { app.getSharedPreferences("navimuse_duplicates", android.content.Context.MODE_PRIVATE) }
@@ -606,22 +645,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * Moves [song]'s file to the Trash folder in your music folder on the NAS (nothing is deleted;
      * Put back undoes it). NaviMuse stops showing it at once, and asks Navidrome for a quick scan
      * so it drops off Navidrome's lists too (if you're an admin; otherwise the next scan does it).
+     * Away from home, where the NAS can't be reached, it waits (hidden) and moves next time the
+     * phone is on home Wi-Fi.
      */
     fun moveToTrash(song: Song) {
         viewModelScope.launch {
             try {
-                val share = app.shareLogin.value
-                    ?: throw IllegalStateException("Set up your music folder first: Settings → General → Music folder (SMB).")
-                val native = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in."))
-                val file = native.songFile(song.id)
-                val trashed = withContext(Dispatchers.IO) {
-                    MusicShare(share).use { ms ->
-                        val rel = ms.locate(file.path)
-                            ?: throw IllegalStateException("Couldn't find \"${file.path}\" in your music folder, so nothing was moved. Check Settings → Music folder.")
-                        ms.moveToTrash(rel)
-                    }
-                }
-                GhostSongs.mark(song, "Moved to the Trash ($trashed)")
+                val outcome = TrashMover.trashOrQueue(app, song)
                 _duplicates.update { s ->
                     s?.copy(
                         groups = s.groups.mapNotNull { g ->
@@ -630,8 +660,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         },
                     )
                 }
-                val scanned = runCatching { if (native.admin()) api().startQuickScan() else null }.getOrNull() != null
-                say("Moved \"${song.title}\" to the Trash." + if (scanned) "" else " Navidrome drops it at its next scan.")
+                say(
+                    when (outcome) {
+                        is TrashMover.Outcome.Moved ->
+                            "Moved \"${song.title}\" to the Trash." + if (outcome.scanned) "" else " Navidrome drops it at its next scan."
+                        TrashMover.Outcome.Queued ->
+                            "Can't reach your NAS from here, so \"${song.title}\" moves to the Trash next time you're on home Wi-Fi. It's hidden until then."
+                    },
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -640,9 +676,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** What's in the Trash on the NAS (after emptying what's been there 30 days, if that's on). */
+    /** Songs deleted away from home, waiting for the NAS. */
+    val trashQueue: StateFlow<List<TrashQueue.Entry>> get() = TrashQueue.all
+
+    /** Keeps a song that was waiting to move to the Trash: it's back in your lists. */
+    fun keepWaitingSong(entry: TrashQueue.Entry) {
+        TrashQueue.remove(entry.songId)
+        GhostSongs.clear(entry.songId)
+        TrashQueueWorker.sync(app)
+        say("Kept \"${entry.title}\"")
+    }
+
+    /** Moves the songs waiting for home, if the NAS answers now (when the app opens). */
+    private fun moveWaitingSongs() {
+        if (TrashQueue.waiting().isEmpty()) return
+        viewModelScope.launch {
+            val run = runCatching { TrashMover.runQueue(app, retryProblems = false) }.getOrNull() ?: return@launch
+            TrashQueueWorker.sync(app)
+            when (run.moved.size) {
+                0 -> {}
+                1 -> say("Back home: moved \"${run.moved[0].title}\" to the Trash.")
+                else -> say("Back home: moved ${run.moved.size} songs to the Trash.")
+            }
+        }
+    }
+
+    /**
+     * What's in the Trash on the NAS (after moving the songs waiting for home, and emptying what's
+     * been there 30 days, if that's on).
+     */
     suspend fun trash(): List<TrashItem> {
         val share = app.shareLogin.value ?: return emptyList()
+        if (!TrashMover.reachable(share.server)) {
+            throw IllegalStateException("Can't reach your NAS from here. The Trash opens on your home Wi-Fi.")
+        }
+        TrashMover.runQueue(app, retryProblems = true)
+        TrashQueueWorker.sync(app)
         return withContext(Dispatchers.IO) {
             MusicShare(share).use { ms ->
                 if (settings.value.trashAutoEmpty) runCatching { ms.emptyOld() }
@@ -659,6 +728,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val share = app.shareLogin.value ?: return
         emptiedTrash = true
         viewModelScope.launch(Dispatchers.IO) {
+            // Away from home: try again next time the app opens.
+            if (!TrashMover.reachable(share.server)) {
+                emptiedTrash = false
+                return@launch
+            }
             runCatching { MusicShare(share).use { it.emptyOld() } }
         }
     }

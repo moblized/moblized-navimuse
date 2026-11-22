@@ -41,7 +41,10 @@ import app.navimuse.ui.icons.Icon
  */
 @Composable
 fun GhostSongsScreen(vm: AppViewModel, onBack: () -> Unit) {
-    val ghosts by GhostSongs.all.collectAsState()
+    val allGhosts by GhostSongs.all.collectAsState()
+    // Songs waiting to move to the Trash are on the Trash page instead.
+    val waiting by vm.trashQueue.collectAsState()
+    val ghosts = allGhosts.filterKeys { id -> waiting.none { it.songId == id } }
     val scan by vm.ghostScan.collectAsState()
     val list = ghosts.values.sortedWith(compareBy({ it.artist.lowercase() }, { it.album.lowercase() }, { it.title.lowercase() }))
     val scanning = scan?.done == false

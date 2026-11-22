@@ -46,12 +46,20 @@ object GhostSongs {
     /** [songs] without the ghosts. */
     fun playable(songs: List<Song>): List<Song> = if (_all.value.isEmpty()) songs else songs.filterNot(::isGhost)
 
-    fun mark(song: Song, reason: String) = change {
-        it + (song.id to Ghost(song.id, song.title, song.artist, song.album, reason, System.currentTimeMillis()))
+    fun mark(song: Song, reason: String) = mark(song.id, song.title, song.artist, song.album, reason)
+
+    fun mark(id: String, title: String, artist: String, album: String, reason: String) = change {
+        it + (id to Ghost(id, title, artist, album, reason, System.currentTimeMillis()))
     }
 
-    /** It plays after all (the file came back, or Navidrome was rescanned). */
-    fun clear(id: String) = change { it - id }
+    /**
+     * It plays after all (the file came back, or Navidrome was rescanned). A song waiting to move
+     * to the Trash ([TrashQueue]) stays hidden: its file is still there, so it would play.
+     */
+    fun clear(id: String) {
+        if (TrashQueue.has(id)) return
+        change { it - id }
+    }
 
     fun clearAll() = change { emptyMap() }
 

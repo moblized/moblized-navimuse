@@ -5,4 +5,6 @@
     <string name="downloads_channel_description">Progress of songs saving for offline play</string>
     <string name="updates_channel">App updates</string>
     <string name="updates_channel_description">Tells you when a new version of NaviMuse is ready to install</string>
+    <string name="trash_channel">Trash</string>
+    <string name="trash_channel_description">Tells you when songs you deleted away from home have moved to the Trash on your NAS</string>
 </resources>

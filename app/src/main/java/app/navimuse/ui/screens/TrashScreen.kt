@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,12 +24,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import app.navimuse.data.TrashQueue
 import app.navimuse.net.SafetyGuard
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.components.CardTone
 import app.navimuse.ui.components.EmptyBox
 import app.navimuse.ui.components.FloatingTopBar
 import app.navimuse.ui.components.InfoCard
+import app.navimuse.ui.components.Load
 import app.navimuse.ui.components.LoadBox
 import app.navimuse.ui.components.rememberLoad
 import app.navimuse.ui.friendly
@@ -38,6 +41,13 @@ import kotlinx.coroutines.launch
 @Composable
 fun TrashScreen(vm: AppViewModel, onBack: () -> Unit) {
     val loaded = rememberLoad("trash") { vm.trash() }
+    // Loads again when a waiting song moves while you look (when the app opens at home, or the
+    // background check): not while loading, since loading moves them too.
+    val moved by TrashQueue.moved.collectAsState()
+    LaunchedEffect(moved) {
+        if (loaded.state !is Load.Loading) loaded.retry()
+    }
+    val waiting by vm.trashQueue.collectAsState()
     val settings by vm.settings.collectAsState()
     val autoEmpty = settings.trashAutoEmpty
     val scope = rememberCoroutineScope()
@@ -62,6 +72,49 @@ fun TrashScreen(vm: AppViewModel, onBack: () -> Unit) {
                 )
             }
             problem?.let { p -> item { Text(p, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) } }
+            if (waiting.isNotEmpty()) {
+                item {
+                    Text(
+                        "Waiting for home Wi-Fi (${waiting.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                    )
+                    Text(
+                        "Deleted away from home, where your NAS can't be reached. They're hidden now, and move to the Trash " +
+                            "next time the phone is on home Wi-Fi (even with NaviMuse closed). Keep one to have it back.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+                items(waiting, key = { "waiting-" + it.songId }) { w ->
+                    ListItem(
+                        headlineContent = { Text(w.title) },
+                        supportingContent = {
+                            Column {
+                                Text(
+                                    listOf(w.artist, w.album).filter { it.isNotBlank() }.joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    w.problem?.let { "Couldn't move it: $it" } ?: "Moves next time you're on home Wi-Fi",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (w.problem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        trailingContent = { TextButton(onClick = { vm.keepWaitingSong(w) }) { Text("Keep") } },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+                item {
+                    Text(
+                        "In the Trash",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                    )
+                }
+            }
             item {
                 LoadBox(loaded) { items ->
                     if (items.isEmpty()) EmptyBox("The Trash is empty.")

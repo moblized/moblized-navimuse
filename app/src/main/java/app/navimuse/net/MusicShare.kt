@@ -1,9 +1,11 @@
 package app.navimuse.net
 
 import com.hierynomus.msdtyp.AccessMask
+import com.hierynomus.mserref.NtStatus
 import com.hierynomus.msfscc.FileAttributes
 import com.hierynomus.mssmb2.SMB2CreateDisposition
 import com.hierynomus.mssmb2.SMB2ShareAccess
+import com.hierynomus.mssmb2.SMBApiException
 import com.hierynomus.protocol.commons.EnumWithValue
 import com.hierynomus.security.bc.BCSecurityProvider
 import com.hierynomus.smbj.SMBClient
@@ -44,6 +46,12 @@ data class TrashItem(val path: String, val bytes: Long, val trashedAt: Long) {
     val deletesAt: Long get() = trashedAt + SafetyGuard.TRASH_DAYS * 24L * 60 * 60 * 1000
 }
 
+/** The share isn't there (a wrong name in Share). */
+class NoSuchShare(val share: String, message: String) : IOException(message)
+
+/** The NAS turned the SMB login away (wrong username or password, or no access to the share). */
+class ShareLoginRefused(message: String) : IOException(message)
+
 class MusicShare(private val login: ShareLogin) : Closeable {
     private val client = SMBClient(
         SmbConfig.builder()
@@ -57,11 +65,29 @@ class MusicShare(private val login: ShareLogin) : Closeable {
     private val session by lazy {
         val user = login.username.trim()
         val (domain, name) = if ('\\' in user) user.substringBefore('\\') to user.substringAfter('\\') else "" to user
-        connection.authenticate(AuthenticationContext(name, login.password.toCharArray(), domain))
+        try {
+            connection.authenticate(AuthenticationContext(name, login.password.toCharArray(), domain))
+        } catch (e: SMBApiException) {
+            if (e.status == NtStatus.STATUS_LOGON_FAILURE) {
+                throw ShareLoginRefused("Your NAS didn't accept that SMB username and password.")
+            }
+            throw e
+        }
     }
     private val disk by lazy {
-        session.connectShare(login.share.trim().trim('/', '\\')) as? DiskShare
-            ?: throw IOException("\"${login.share}\" isn't a folder share.")
+        val name = login.share.trim().trim('/', '\\')
+        val share = try {
+            session.connectShare(name)
+        } catch (e: SMBApiException) {
+            when (e.status) {
+                NtStatus.STATUS_BAD_NETWORK_NAME ->
+                    throw NoSuchShare(name, "There's no share called \"$name\" on ${login.server.trim()}.")
+                NtStatus.STATUS_ACCESS_DENIED ->
+                    throw ShareLoginRefused("The SMB user \"${login.username.trim()}\" isn't allowed into the share \"$name\".")
+                else -> throw e
+            }
+        }
+        share as? DiskShare ?: throw IOException("\"${login.share}\" isn't a folder share.")
     }
 
     private fun parts(p: String) = p.replace('\\', '/').split('/').filter { it.isNotEmpty() }
