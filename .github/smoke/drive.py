@@ -319,11 +319,15 @@ def import_list():
     type_text("Test Artist - Sine Song 1", shows="Sine Song 1")
     adb("shell", "input", "keyevent", "66")  # new line
     type_text("Nobody - Not A Real Song")
+    adb("shell", "input", "keyevent", "66")  # new line
+    type_text("Gone Artist - Faded Track")
     adb("shell", "input", "keyevent", "111")  # keyboard away
     time.sleep(1)
     tap(text="Import", last=True)
     wait_for(text="Not in your library (1)", timeout=40)
     assert find(text="Sine Song 1") is not None, "the song the library has wasn't found"
+    # Found in the library but its file is gone: left out, not imported.
+    assert find(text="In your library, but won't play (1)") is not None, "the song that won't play wasn't set apart"
     time.sleep(1)
     shot("05c-import")
     tap(text="Save playlist")
@@ -336,7 +340,7 @@ def import_list():
             break
         time.sleep(1)
     assert saved, "no playlist named Imported playlist"
-    assert saved.get("songCount") == 1, f"expected the 1 song found: {saved}"
+    assert saved.get("songCount") == 1, f"expected only the 1 song that plays: {saved}"
     back()
     wait_for(text="Road trip")
 
@@ -936,10 +940,13 @@ def ghost_songs():
     tap(text="Collection")
     tap(desc="Settings")
     settings_tab("Playback")
-    tap_node(scroll_to("Ghost songs (1)"))
+    tap_node(scroll_to("Ghost songs (2)"))
     wait_for(text="Vanished Track")
+    assert find(text="Faded Track") is not None, "the song the import found wouldn't play isn't a ghost"
     time.sleep(1)
     shot("15e-ghost-songs")
+    tap(text="Not a ghost")
+    time.sleep(1)
     tap(text="Not a ghost")
     wait_for(text="No ghost songs", contains=True)
     tap(text="Look for them")
@@ -947,6 +954,7 @@ def ghost_songs():
     status = find(text="Checked all", contains=True).get("text", "")
     print(f"  {status}", flush=True)
     assert find(text="Vanished Track") is not None, f"looking through the library didn't find the ghost song: {status}"
+    assert find(text="Faded Track") is not None, f"looking through the library didn't find the other ghost: {status}"
     shot("15f-ghost-scan")
     back()  # Settings
     back()  # Collection

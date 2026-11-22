@@ -58,6 +58,11 @@ ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=520:duration=30" \
   -metadata title="Vanished Track" -metadata artist="Gone Artist" -metadata album_artist="Gone Artist" \
   -metadata album="Gone Album" -metadata track=1 -metadata date=2021 -metadata genre=Gone \
   -c:a libmp3lame -b:a 128k "music/Gone Artist/Gone Album/01.mp3"
+# And one more, for the import check: found in the library, but won't play.
+ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=540:duration=30" \
+  -metadata title="Faded Track" -metadata artist="Gone Artist" -metadata album_artist="Gone Artist" \
+  -metadata album="Gone Album" -metadata track=2 -metadata date=2021 -metadata genre=Gone \
+  -c:a libmp3lame -b:a 128k "music/Gone Artist/Gone Album/02.mp3"
 
 # A Dolby Digital Plus 5.1 album in .m4a, like Atmos music: Navidrome can't tell it from AAC,
 # so the app has to look inside the file to show its Dolby badge.
@@ -104,7 +109,7 @@ for _ in $(seq 60); do
   sleep 2
 done
 echo "vanishing song: ${gone:-not found}"
-rm -f "music/Gone Artist/Gone Album/01.mp3"
+rm -f "music/Gone Artist/Gone Album/01.mp3" "music/Gone Artist/Gone Album/02.mp3"
 
 # A song that went into the Trash 40 days ago (by the Trash's log): the app deletes it for good.
 # Put there after the scan, so Navidrome never lists it.
