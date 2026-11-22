@@ -46,6 +46,17 @@ ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=520:duration=30" \
   -metadata album="Gone Album" -metadata track=1 -metadata date=2021 -metadata genre=Gone \
   -c:a libmp3lame -b:a 128k "music/Gone Artist/Gone Album/01.mp3"
 
+# The same recording twice: on its single and on an album, for the Duplicates page (and the Trash).
+mkdir -p "music/Twin Artist/Twin Album" "music/Twin Artist/Twin Tune - Single"
+ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=660:duration=30" \
+  -metadata title="Twin Tune" -metadata artist="Twin Artist" -metadata album_artist="Twin Artist" \
+  -metadata album="Twin Album" -metadata track=1 -metadata date=2022 -metadata genre=Twin \
+  -c:a libmp3lame -b:a 192k "music/Twin Artist/Twin Album/01.mp3"
+ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=660:duration=30" \
+  -metadata title="Twin Tune" -metadata artist="Twin Artist" -metadata album_artist="Twin Artist" \
+  -metadata album="Twin Tune - Single" -metadata track=1 -metadata date=2021 -metadata genre=Twin \
+  -c:a libmp3lame -b:a 128k "music/Twin Artist/Twin Tune - Single/01.mp3"
+
 # A Dolby Digital Plus 5.1 album in .m4a, like Atmos music: Navidrome can't tell it from AAC,
 # so the app has to look inside the file to show its Dolby badge.
 mkdir -p "music/Surround Artist/Dolby Album"
@@ -63,6 +74,15 @@ docker run -d --name navidrome -p 4533:4533 \
   deluan/navidrome:latest
 
 for _ in $(seq 90); do curl -fs "$ND/ping" >/dev/null && break; sleep 2; done
+
+# The music folder as an SMB share (user smoke / smbpass), as on a NAS: where the app moves a
+# song you delete, into its _Trash folder. Files stay owned by this runner's user.
+chmod -R a+rwX music
+docker run -d --name samba -p 445:445 \
+  -e ACCOUNT_smoke=smbpass -e UID_smoke="$(id -u)" \
+  -e "SAMBA_VOLUME_CONFIG_music=[music]; path=/shares/music; valid users = smoke; guest ok = no; read only = no; browseable = yes; force user = smoke" \
+  -v "$PWD/music:/shares/music" \
+  ghcr.io/servercontainers/samba:latest
 
 curl -fsS -X POST "$ND/auth/createAdmin" -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"secret123"}' >/dev/null

@@ -126,6 +126,30 @@ class Store(context: Context) {
         e.apply()
     }
 
+    /** Your music folder on the NAS over SMB, where deleted songs are moved to a Trash folder. */
+    fun share(): app.navimuse.net.ShareLogin? {
+        val server = prefs.getString("smbServer", null)?.takeIf { it.isNotBlank() } ?: return null
+        return app.navimuse.net.ShareLogin(
+            server = server,
+            share = prefs.getString("smbShare", "").orEmpty(),
+            folder = prefs.getString("smbFolder", "").orEmpty(),
+            username = prefs.getString("smbUser", "").orEmpty(),
+            password = prefs.getString("smbPassword", null)?.let { SecretBox.decrypt(it) }.orEmpty(),
+        )
+    }
+
+    fun saveShare(login: app.navimuse.net.ShareLogin?) {
+        val e = prefs.edit()
+        if (login == null) {
+            e.remove("smbServer").remove("smbShare").remove("smbFolder").remove("smbUser").remove("smbPassword")
+        } else {
+            e.putString("smbServer", login.server.trim()).putString("smbShare", login.share.trim())
+                .putString("smbFolder", login.folder.trim()).putString("smbUser", login.username.trim())
+                .putString("smbPassword", SecretBox.encrypt(login.password))
+        }
+        e.apply()
+    }
+
     fun settings(): Settings = Settings(
         theme = enumOr(prefs.getString("theme", null), ThemeMode.DARK),
         wifiQuality = enumOr(prefs.getString("wifiQuality", null), Quality.ORIGINAL),

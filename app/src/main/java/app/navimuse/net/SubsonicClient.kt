@@ -177,6 +177,11 @@ class SubsonicClient(
             ),
         ).songs
 
+    /** Asks Navidrome for a quick scan (admins only), so a song moved to the Trash drops off its lists. */
+    suspend fun startQuickScan() {
+        call("startScan")
+    }
+
     suspend fun starred(): Starred = Parse.starred(call("getStarred2"))
 
     suspend fun genres(): List<Genre> = Parse.genres(call("getGenres"))

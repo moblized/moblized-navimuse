@@ -1,6 +1,6 @@
 # NaviMuse
 
-An Android music player for **Navidrome** with **AudioMuse-AI** mixes, built so it **can't delete anything** on your server.
+An Android music player for **Navidrome** with **AudioMuse-AI** mixes, built so it **can't delete anything** on your server. Songs you delete go to a Trash folder you can undo.
 
 ## What it does
 
@@ -22,6 +22,8 @@ An Android music player for **Navidrome** with **AudioMuse-AI** mixes, built so 
 - **Playlist from a title:** tap New playlist (in Playlists or the Mixes tab), name it in plain words like "Gym", "Rainy Sunday" or "Skillet and friends", and NaviMuse fills it from your library, like Tidal. With AudioMuse-AI connected it picks by how songs sound; without it, from the genres, moods and artists the title names. Take songs out, ask for new picks, then save.
 - **Import from TIDAL:** in Playlists, tap Import and paste a TIDAL playlist link, paste the songs one per line ("Artist - Title"), or pick a CSV a transfer service (TuneMyMusic, Soundiiz) exported from TIDAL. NaviMuse finds each song in your library, shows what's missing, and saves the rest as a new playlist. Links need your own free TIDAL developer app (Settings → TIDAL); it reads public playlists only.
 - **Autoplay radio:** when the queue runs out (its last song, a single, or a one-song album), songs like it are added so the music keeps going, with no gap. They show under "Autoplay" in the queue, and "Add to queue" puts your songs before them. Off while repeat is on; turn it off in Settings → Playback.
+- **Duplicates:** Settings → Playback → Duplicates reads your library and groups the same song found more than once: an old entry and its moved copy, two copies of the same file, a single and its album version, or maybe-different versions (different lengths). The copy worth keeping is marked (lossless first, then bit rate, then album over single); play each to compare, move the others to the Trash, or mark a group "Not duplicates".
+- **Delete songs (to a Trash you can undo):** Navidrome can't delete files, so NaviMuse uses your music share on the NAS (Settings → General → Music folder (SMB); Test checks it finds your songs). "Move to Trash" in any song's menu moves the file into a `_Trash` folder in the music folder, at the same place inside it, with an empty `.ndignore` so Navidrome doesn't list it, then asks Navidrome for a quick scan. Settings → Playback → Trash puts songs back. The app never deletes a file: it can only move songs into `_Trash` and back out (empty it from a computer when you're sure).
 - **Ghost songs:** songs Navidrome still lists but can't play (their files were moved, renamed or deleted since its last scan). NaviMuse remembers each one it runs into, leaves them out of mixes, radio and queues, marks them "Won't play" in lists, and checks them again each time the app opens. Settings → Playback → Ghost songs lists them and can look through your whole library for more. Nothing is deleted; a full scan in Navidrome clears them for good.
 - **Songs that won't play:** when a song stops, the app first looks at what your server is sending. If Navidrome can't open the song's file (moved, renamed or deleted since its last scan), you get a note saying so and the queue moves on. If the phone can't play the format, the song switches by itself to one that plays (the original file, MP3, a lower bitrate), and the app remembers what worked.
 - **Android Auto:** tabs for Mixes, Recently added, Playlists and Favourites, an "Instant Mix from what's playing" button, and voice search ("play … on NaviMuse").
@@ -38,8 +40,12 @@ Every request passes through one gate, [`SafetyGuard`](app/src/main/java/app/nav
 | `createPlaylist` with a `playlistId` (this replaces an existing playlist's songs) | `createPlaylist` that makes a **new** playlist |
 | `updatePlaylist` with `songIndexToRemove`, a rename or a visibility change | `updatePlaylist` that only **adds** songs |
 | Playlist names ending in `_automatic` (AudioMuse-AI deletes those) | Favourites (star/unstar) and play reports (scrobble) |
-| `startScan`, play-queue saves, user, share and radio changes | |
+| A full `startScan`, play-queue saves, user, share and radio changes | A quick `startScan`, after you move a song to the Trash or put it back |
+| Anything on Navidrome's own API but signing in and reading a song | `GET /api/song/{id}`, to learn where a song's file is |
+| Deleting, overwriting or moving files anywhere else on your music share | Moving a song into `_Trash` at the same place inside it, and back out |
 | Any AudioMuse-AI call except searching. Its API token is admin-level, so cleaning, clustering, analysis, delete and restore calls are all blocked | AudioMuse-AI mood search (`POST /api/clap/search`) |
+
+The music share code ([`MusicShare`](app/src/main/java/app/navimuse/net/MusicShare.kt)) has no delete at all, and [`SafetyGuard.checkMove`](app/src/main/java/app/navimuse/net/SafetyGuard.kt) checks every move: only into the Trash and back, never onto an existing file.
 
 Downloads are stored in the app's own storage on the phone. "Remove download" deletes that copy only. The one request that doesn't go to your server is the update check, which reads this repo's public Releases page on GitHub (turn it off under Settings → Updates).
 

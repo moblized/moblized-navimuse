@@ -941,6 +941,58 @@ def ghost_songs():
     back()  # Collection
 
 
+def trash_and_put_back():
+    """Set up the music share, find the single + album duplicate, move the single to the Trash on
+    the share, then put it back: the file really moves, and nothing is deleted."""
+    single = "music/Twin Artist/Twin Tune - Single/01.mp3"
+    trashed = "music/_Trash/Twin Artist/Twin Tune - Single/01.mp3"
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Collection")
+    tap(desc="Settings")
+    settings_tab("General")
+    scroll_to("SMB password")
+    # The NAS address starts as the Navidrome server's (10.0.2.2 here).
+    assert find(text="10.0.2.2", contains=True) is not None, "the NAS address didn't start as Navidrome's"
+    fill("Share", "music", shows="music")
+    fill("SMB username", "smoke", shows="smoke")
+    tap(text="SMB password")
+    time.sleep(0.5)
+    type_text("smbpass")
+    adb("shell", "input", "keyevent", "111")
+    time.sleep(1)
+    tap_node(scroll_to("Test"))
+    wait_for(text="Works: found", contains=True, timeout=60)
+    print(f"  {find(text='Works: found', contains=True).get('text')}", flush=True)
+    tap(text="Save", last=True)
+    time.sleep(1)
+    settings_tab("Playback")
+    tap_node(scroll_to("Duplicates"))
+    wait_for(text="Single and album version", timeout=90)
+    time.sleep(1)
+    shot("15g-duplicates")
+    # The single is listed after the album copy marked Keep: its Trash button is the last.
+    tap(desc="Move this copy to the Trash", last=True)
+    wait_for(text="Move to Trash?")
+    tap(text="Move to Trash", last=True)
+    for _ in range(30):
+        if os.path.exists(trashed):
+            break
+        time.sleep(1)
+    assert os.path.exists(trashed), "the single wasn't moved into the Trash on the share"
+    assert not os.path.exists(single), "the single is still where it was"
+    assert os.path.exists("music/_Trash/.ndignore"), "the Trash has no .ndignore, so Navidrome would list it"
+    back()  # Settings
+    tap_node(scroll_to("Trash"))
+    wait_for(text="Put back", timeout=60)
+    shot("15h-trash")
+    tap(text="Put back")
+    wait_for(text="The Trash is empty.", timeout=60)
+    assert os.path.exists(single) and not os.path.exists(trashed), "Put back didn't put the single back"
+    back()  # Settings
+    back()  # Collection
+
+
 def repeat_mode():
     out = adb("shell", "dumpsys", "media_session")
     return "one" if "Repeat one" in out else "all" if "Repeat all" in out else "off"
@@ -1013,6 +1065,7 @@ for name, fn in [
     ("Dolby badge on a Dolby album", dolby_album),
     ("a song whose file is gone on the server is skipped with a note", missing_song_skips),
     ("ghost songs: listed, and found by looking through the library", ghost_songs),
+    ("duplicates: move a copy to the Trash on the share, then put it back", trash_and_put_back),
     ("a song the phone can't play switches by itself", unplayable_switches),
     ("autoplay radio after the last song", autoplay_radio),
     ("safety, settings, dark mode + dark icon", settings_and_dark),

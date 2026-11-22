@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -139,6 +140,8 @@ class UiActions(
     val newPlaylistFromTitle: () -> Unit = {},
     /** Asks for a TIDAL playlist link, a song list or a file to import (see ImportScreen). */
     val importPlaylist: () -> Unit = {},
+    /** Asks, then moves a song's file to the Trash on the NAS (see AppViewModel.moveToTrash). */
+    val trashSong: (Song) -> Unit = {},
 )
 
 val LocalUi = staticCompositionLocalOf<UiActions> { error("UiActions not provided") }
@@ -547,6 +550,9 @@ fun SongMenu(song: Song, expanded: Boolean, onDismiss: () -> Unit, extra: (@Comp
         song.albumId?.let { id -> MenuItem("Go to album", Icons.Filled.Album) { onDismiss(); ui.navigate(Route.AlbumPage(id)) } }
         song.artistId?.let { id -> MenuItem("Go to artist", Icons.Filled.Person) { onDismiss(); ui.navigate(Route.ArtistPage(id)) } }
         extra?.invoke(onDismiss)
+        HorizontalDivider()
+        // Moves the file to the Trash on the NAS, after asking (nothing is deleted).
+        MenuItem("Move to Trash", Icons.Filled.Delete) { onDismiss(); ui.trashSong(song) }
     }
 }
 

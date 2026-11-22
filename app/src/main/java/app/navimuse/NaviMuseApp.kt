@@ -56,6 +56,15 @@ class NaviMuseApp : Application() {
     /** Your TIDAL developer app's Client ID and secret, for importing public TIDAL playlists. */
     val tidalLogin: StateFlow<app.navimuse.net.TidalLogin?> by lazy { _tidal.asStateFlow() }
 
+    private val _share by lazy { MutableStateFlow(store.share()) }
+    /** Your music folder on the NAS (SMB), for moving deleted songs to its Trash. */
+    val shareLogin: StateFlow<app.navimuse.net.ShareLogin?> by lazy { _share.asStateFlow() }
+
+    fun saveShare(login: app.navimuse.net.ShareLogin?) {
+        store.saveShare(login)
+        _share.value = store.share()
+    }
+
     fun saveTidal(login: app.navimuse.net.TidalLogin?) {
         store.saveTidal(login)
         _tidal.value = store.tidal()

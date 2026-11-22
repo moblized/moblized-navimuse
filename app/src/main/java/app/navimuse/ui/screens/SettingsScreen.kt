@@ -14,6 +14,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -67,6 +69,8 @@ import app.navimuse.data.Quality
 import app.navimuse.data.ThemeMode
 import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.Route
+import app.navimuse.ui.friendly
+import app.navimuse.ui.theme.accent
 import app.navimuse.ui.components.LocalUi
 import app.navimuse.ui.components.rememberSoundEffects
 import app.navimuse.update.Updater
@@ -207,6 +211,10 @@ private fun GeneralSettings(vm: AppViewModel, onLogOut: () -> Unit) {
     TidalSettings(vm)
 
     HorizontalDivider()
+    Group("Music folder (SMB, optional)")
+    MusicFolderSettings(vm)
+
+    HorizontalDivider()
     Group("Updates")
     SwitchRow(
         "Update automatically",
@@ -242,6 +250,8 @@ private fun PlaybackSettings(vm: AppViewModel) {
     )
     SwitchedSongsRow()
     GhostSongsRow()
+    LinkRow("Duplicates", "The same song more than once: find them, keep the best copy.", Icons.Filled.ContentCopy, Route.Duplicates)
+    LinkRow("Trash", "Songs you deleted, on your NAS. Put them back from here.", Icons.Filled.Delete, Route.Trash)
     Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text("Instant Mix length: ${settings.mixSize} songs", style = MaterialTheme.typography.bodyLarge)
         Slider(
@@ -296,6 +306,97 @@ private fun SwitchedSongsRow() {
             }) { Text("Forget") }
         },
     )
+}
+
+/** A row that opens another page. */
+@Composable
+private fun LinkRow(title: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, route: Route) {
+    val ui = LocalUi.current
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(detail) },
+        leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
+        modifier = Modifier.clickable { ui.navigate(route) },
+    )
+}
+
+/**
+ * Your music folder on the NAS over SMB, so a song you delete can be moved to its Trash. Navidrome
+ * itself can't delete files, so NaviMuse needs its own way in. Test checks that one of your
+ * songs' files is where Navidrome says it is.
+ */
+@Composable
+private fun MusicFolderSettings(vm: AppViewModel) {
+    val current by vm.shareLogin.collectAsState()
+    val login by vm.login.collectAsState()
+    val defaultServer = remember(login) { login?.baseUrl?.let { runCatching { java.net.URI(it).host }.getOrNull() }.orEmpty() }
+    var server by remember(current) { mutableStateOf(current?.server ?: defaultServer) }
+    var share by remember(current) { mutableStateOf(current?.share ?: "") }
+    var folder by remember(current) { mutableStateOf(current?.folder ?: "") }
+    var user by remember(current) { mutableStateOf(current?.username ?: "") }
+    var password by remember(current) { mutableStateOf(current?.password ?: "") }
+    var showPassword by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val entered = app.navimuse.net.ShareLogin(server.trim(), share.trim(), folder.trim(), user.trim(), password)
+    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "To delete songs, NaviMuse moves them to a _Trash folder in your music share (nothing is deleted for good; put them back from Trash). " +
+                "Use the share and folder that hold the music Navidrome reads, and a user that can write there.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(server, { server = it }, label = { Text("NAS address") }, placeholder = { Text("truenas.local") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(share, { share = it }, label = { Text("Share") }, placeholder = { Text("music") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            folder,
+            { folder = it },
+            label = { Text("Folder in the share (optional)") },
+            placeholder = { Text("Leave empty if the share is the music folder") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(user, { user = it }, label = { Text("SMB username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            password,
+            { password = it },
+            label = { Text("SMB password") },
+            singleLine = true,
+            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { showPassword = !showPassword }) {
+                    Icon(if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, if (showPassword) "Hide" else "Show")
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        result?.let { (ok, text) ->
+            Text(text, style = MaterialTheme.typography.bodySmall, color = if (ok) MaterialTheme.colorScheme.accent else MaterialTheme.colorScheme.error)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val ready = server.isNotBlank() && share.isNotBlank() && user.isNotBlank()
+            Button(onClick = { vm.saveShare(entered) }, enabled = ready) { Text("Save") }
+            OutlinedButton(
+                enabled = ready && !testing,
+                onClick = {
+                    testing = true
+                    result = null
+                    scope.launch {
+                        result = try {
+                            true to vm.testShare(entered)
+                        } catch (e: Exception) {
+                            false to friendly(e)
+                        }
+                        testing = false
+                    }
+                },
+            ) { Text(if (testing) "Testing…" else "Test") }
+            if (current != null) TextButton(onClick = { vm.saveShare(null) }) { Text("Remove") }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
 }
 
 /** Ghost songs: how many, and the way to the page that finds and lists them. */
