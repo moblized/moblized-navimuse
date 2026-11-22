@@ -66,7 +66,7 @@ class TrashQueueWorker(context: Context, params: WorkerParameters) : CoroutineWo
             WorkManager.getInstance(context).cancelUniqueWork(NAME)
         }
 
-        private fun notifyMoved(context: Context, moved: List<TrashQueue.Entry>) {
+        fun notifyMoved(context: Context, moved: List<TrashQueue.Entry>) {
             if (Build.VERSION.SDK_INT >= 33 &&
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) {
