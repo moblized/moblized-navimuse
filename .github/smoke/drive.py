@@ -974,7 +974,10 @@ def trash_and_put_back():
     scroll_to("SMB password")
     # The NAS address starts as the Navidrome server's (10.0.2.2 here).
     assert find(text="10.0.2.2", contains=True) is not None, "the NAS address didn't start as Navidrome's"
-    fill("Share", "music", shows="music")
+    # Typed the way people do: the NAS address again in Share, the share's path in Folder.
+    # Test works out that the share is "music" and saves that.
+    fill("Share", "smb://10.0.2.2", shows="smb://10.0.2.2")
+    fill("Folder in the share (optional)", "/music", shows="/music")
     fill("SMB username", "smoke", shows="smoke")
     hide_keyboard()
     tap_node(scroll_to("SMB password"))
@@ -983,8 +986,9 @@ def trash_and_put_back():
     hide_keyboard()
     time.sleep(1)
     tap_node(scroll_to("Test"))
-    wait_for(text="Works: found", contains=True, timeout=60)
-    print(f"  {find(text='Works: found', contains=True).get('text')}", flush=True)
+    works = wait_for(text="Works: found", contains=True, timeout=60)
+    print(f"  {works.get('text')}", flush=True)
+    assert 'Share "music"' in works.get("text"), "Test didn't sort out the share's name"
     tap(text="Save", last=True)
     time.sleep(1)
     settings_tab("Playback")
