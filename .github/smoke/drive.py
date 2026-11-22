@@ -1059,9 +1059,11 @@ def trash_while_away():
         tap_node(scroll_to("Move to Trash", swipes=3))
         wait_for(text="Move to Trash?")
         tap(text="Move to Trash", last=True)
-        wait_for(text="next time you're on home Wi-Fi", contains=True, timeout=40)
-        print(f"  {find(text='next time you', contains=True).get('text')}", flush=True)
+        note = wait_for(text="next time you're on home Wi-Fi", contains=True, timeout=40)
+        print(f"  {note.get('text')}", flush=True)
         shot("15i-trash-queued")
+        # The search box takes focus back after the dialog: keyboard away, so the tabs show.
+        hide_keyboard()
         assert os.path.exists(song_file) and not os.path.exists(trashed), "the file moved while the share was away"
         tap(text="Collection")
         tap(desc="Settings")
@@ -1073,6 +1075,7 @@ def trash_while_away():
         wait_for(text="Can't reach your NAS from here", contains=True, timeout=30)
         shot("15j-trash-waiting")
     finally:
+        hide_keyboard()
         subprocess.run(["docker", "start", "samba"], check=True, timeout=90, capture_output=True)
         for _ in range(60):
             if share_answers():
