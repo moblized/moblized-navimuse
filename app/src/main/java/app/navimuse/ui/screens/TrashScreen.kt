@@ -71,7 +71,8 @@ fun TrashScreen(vm: AppViewModel, onBack: () -> Unit) {
                 ListItem(
                     headlineContent = { Text(t.path.substringAfterLast('/')) },
                     supportingContent = {
-                        val left = ((t.deletesAt - System.currentTimeMillis()) / 86_400_000L).coerceAtLeast(0)
+                        // Whole days left, rounded up: one put in a minute ago has 30.
+                        val left = kotlin.math.ceil((t.deletesAt - System.currentTimeMillis()) / 86_400_000.0).toLong().coerceAtLeast(0)
                         Text(
                             listOfNotNull(
                                 t.path.substringBeforeLast('/', "").ifBlank { null },
