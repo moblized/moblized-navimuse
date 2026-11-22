@@ -182,6 +182,9 @@ class SubsonicClient(
         call("startScan")
     }
 
+    /** Whether Navidrome is scanning right now. */
+    suspend fun scanning(): Boolean = call("getScanStatus").optJSONObject("scanStatus")?.optBoolean("scanning", false) ?: false
+
     suspend fun starred(): Starred = Parse.starred(call("getStarred2"))
 
     suspend fun genres(): List<Genre> = Parse.genres(call("getGenres"))

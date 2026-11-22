@@ -298,6 +298,26 @@ fun TrashSongDialog(song: Song, ready: Boolean, onDismiss: () -> Unit, onConfirm
     )
 }
 
+/** Confirms deleting [count] ghost songs (songs Navidrome lists that won't play). */
+@Composable
+fun DeleteGhostsDialog(count: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val what = if (count == 1) "this ghost song" else "$count ghost songs"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete $what?") },
+        text = {
+            Text(
+                "Most ghost songs have no file left: Navidrome's entry still points to where it was. NaviMuse asks " +
+                    "Navidrome for a quick scan, which drops those entries.\n\nOne Navidrome still lists after that is tried " +
+                    "again, and if it still won't play, its file moves to the _Trash folder on your NAS, where you can put it " +
+                    "back (Settings → Playback → Trash). Songs that play now are kept.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 /** Search for one song (used to pick the ends of a song path, or a mix seed). */
 @Composable
 fun SongPickerDialog(title: String, onDismiss: () -> Unit, onPick: (Song) -> Unit) {

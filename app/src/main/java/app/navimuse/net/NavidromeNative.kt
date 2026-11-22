@@ -17,8 +17,11 @@ import java.io.IOException
  * request is checked by SafetyGuard.checkNavidromeNative before it's sent.
  */
 class NavidromeNative(private val http: OkHttpClient, private val login: ServerLogin) {
-    /** Where a song's file is: [path] inside the library folder [libraryPath]. */
-    data class SongFile(val path: String, val libraryPath: String?)
+    /**
+     * Where a song's file is: [path] inside the library folder [libraryPath]. [missing]: Navidrome's
+     * last scan didn't find the file, so it's left out of every list (only admins still see it).
+     */
+    data class SongFile(val path: String, val libraryPath: String?, val missing: Boolean = false)
 
     private var token: String? = null
 
@@ -83,7 +86,11 @@ class NavidromeNative(private val http: OkHttpClient, private val login: ServerL
     }
 
     /** Where song [id]'s file is. */
-    suspend fun songFile(id: String): SongFile = withContext(Dispatchers.IO) {
+    suspend fun songFile(id: String): SongFile =
+        lookup(id) ?: throw IOException("Navidrome doesn't know that song any more.")
+
+    /** Where song [id]'s file is, or null when Navidrome doesn't have the song at all any more. */
+    suspend fun lookup(id: String): SongFile? = withContext(Dispatchers.IO) {
         if (token == null) signIn()
         var (code, body) = send("GET", "/api/song/$id")
         if (code == 401) {
@@ -92,7 +99,7 @@ class NavidromeNative(private val http: OkHttpClient, private val login: ServerL
             code = again.first
             body = again.second
         }
-        if (code == 404) throw IOException("Navidrome doesn't know that song any more.")
+        if (code == 404) return@withContext null
         if (code !in 200..299) throw IOException("Navidrome answered HTTP $code for that song.")
         parseSongFile(JSONObject(body))
     }
@@ -106,7 +113,7 @@ class NavidromeNative(private val http: OkHttpClient, private val login: ServerL
             val lib = o.optString("libraryPath").takeIf { it.isNotBlank() && it != "null" }
             // Older Navidrome gives the whole path; newer gives it inside the library folder.
             val relative = if (lib != null && path.startsWith(lib)) path.removePrefix(lib) else path
-            return SongFile(relative.trimStart('/', '\\'), lib)
+            return SongFile(relative.trimStart('/', '\\'), lib, missing = o.optBoolean("missing", false))
         }
     }
 }

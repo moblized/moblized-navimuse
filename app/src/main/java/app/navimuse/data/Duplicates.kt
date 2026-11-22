@@ -11,7 +11,7 @@ object Duplicates {
     enum class Kind(val label: String, val explain: String) {
         GHOST_COPY(
             "Old entry and new copy",
-            "One of these is a ghost: its file was moved or renamed, and the new copy is here too. A quick scan in Navidrome clears the old one.",
+            "One of these won't play: Navidrome still lists it, but can't open its file (moved, renamed or gone since its last scan). Delete it to clear it out.",
         ),
         TWO_COPIES(
             "Two copies of the same song",
