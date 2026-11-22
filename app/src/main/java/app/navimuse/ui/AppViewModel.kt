@@ -26,6 +26,8 @@ import app.navimuse.net.NavidromeNative
 import app.navimuse.net.ShareLogin
 import app.navimuse.net.TidalClient
 import app.navimuse.net.TrashItem
+import app.navimuse.net.NoSuchShare
+import app.navimuse.net.ShareGuess
 import app.navimuse.data.TrashQueue
 import app.navimuse.trash.TrashMover
 import app.navimuse.trash.TrashQueueWorker
@@ -555,15 +557,47 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         say(if (login == null) "Music folder removed" else "Music folder saved")
     }
 
-    /** Tries [login]: finds one of your songs' files on the share, and says where. */
-    suspend fun testShare(login: ShareLogin): String {
+    /** What Test found: the music folder that works (maybe tidied from what you typed), and where. */
+    data class ShareTest(val login: ShareLogin, val message: String)
+
+    /**
+     * Tries [entered]: finds one of your songs' files on the share, and says where. What you typed
+     * is read kindly (the NAS address in Share, the whole path in Folder): the share and folder
+     * splits it could mean are tried in turn, and the one that works is saved.
+     */
+    suspend fun testShare(entered: ShareLogin): ShareTest {
+        val guesses = ShareGuess.guesses(entered)
+        if (guesses.isEmpty()) throw IllegalStateException("Fill in the NAS address and Share (the share's name on your NAS, like \"media\").")
+        val host = guesses[0].server
+        if (!TrashMover.reachable(host)) throw IllegalStateException("Can't reach $host from here. Test this on your home Wi-Fi.")
         val song = api().allSongs(0, 1).firstOrNull() ?: throw IllegalStateException("Your library has no songs to look for.")
         val file = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in.")).songFile(song.id)
-        val found = withContext(Dispatchers.IO) { MusicShare(login).use { it.locate(file.path) } }
-            ?: throw IllegalStateException(
-                "Signed in, but \"${file.path}\" isn't in that folder. Set Folder to the one Navidrome reads as its music folder.",
+        val missing = ArrayList<String>()
+        var opened: ShareLogin? = null
+        for (g in guesses) {
+            val found = try {
+                withContext(Dispatchers.IO) { MusicShare(g).use { it.locate(file.path) } }
+            } catch (e: NoSuchShare) {
+                missing += e.share
+                continue
+            }
+            if (found != null) {
+                app.saveShare(g)
+                val tidied = g.share != entered.share.trim() || g.folder != entered.folder.trim().trim('/', '\\') || g.server != entered.server.trim()
+                val where = if (g.folder.isEmpty()) "Share \"${g.share}\" (the whole share)" else "Share \"${g.share}\", Folder \"${g.folder}\""
+                return ShareTest(g, "Works: found $found." + if (tidied) " Set to $where and saved." else " Saved.")
+            }
+            if (opened == null) opened = g
+        }
+        opened?.let {
+            throw IllegalStateException(
+                "Opened the share \"${it.share}\", but \"${file.path}\" isn't in it. Set Folder to the one that holds the music Navidrome reads.",
             )
-        return "Works: found $found."
+        }
+        throw IllegalStateException(
+            "There's no share called " + missing.distinct().joinToString(" or ") { "\"$it\"" } + " on $host. " +
+                "Share is the share's name as your NAS lists it (TrueNAS: Shares → Windows (SMB) Shares), not the NAS address.",
+        )
     }
 
     private val dupPrefs by lazy { app.getSharedPreferences("navimuse_duplicates", android.content.Context.MODE_PRIVATE) }

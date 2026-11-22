@@ -359,7 +359,15 @@ private fun MusicFolderSettings(vm: AppViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedTextField(server, { server = it }, label = { Text("NAS address") }, placeholder = { Text("truenas.local") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(share, { share = it }, label = { Text("Share") }, placeholder = { Text("music") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            share,
+            { share = it },
+            label = { Text("Share") },
+            placeholder = { Text("media") },
+            supportingText = { Text("The share's name on your NAS (TrueNAS: Shares → Windows (SMB) Shares), not its address") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
         OutlinedTextField(
             folder,
             { folder = it },
@@ -392,8 +400,9 @@ private fun MusicFolderSettings(vm: AppViewModel) {
             Text(text, style = MaterialTheme.typography.bodySmall, color = if (ok) MaterialTheme.colorScheme.accent else MaterialTheme.colorScheme.error)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            val ready = server.isNotBlank() && share.isNotBlank() && user.isNotBlank()
-            Button(onClick = { vm.saveShare(entered) }, enabled = ready) { Text("Save") }
+            val ready = server.isNotBlank() && (share.isNotBlank() || folder.isNotBlank()) && user.isNotBlank()
+            // Saved tidied (say, the NAS address typed again in Share); Test finds the right split.
+            Button(onClick = { vm.saveShare(app.navimuse.net.ShareGuess.guesses(entered).firstOrNull() ?: entered) }, enabled = ready) { Text("Save") }
             OutlinedButton(
                 enabled = ready && !testing,
                 onClick = {
@@ -401,7 +410,8 @@ private fun MusicFolderSettings(vm: AppViewModel) {
                     result = null
                     scope.launch {
                         result = try {
-                            true to vm.testShare(entered)
+                            // A working music folder is saved, so the fields show what it is.
+                            true to vm.testShare(entered).message
                         } catch (e: Exception) {
                             false to friendly(e)
                         }
