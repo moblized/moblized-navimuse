@@ -866,7 +866,8 @@ def unplayable_switches():
     tap(text="Original")
     back()
     tap(text="Search")
-    box = first(lambda: find(text="Vanished"), lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
+    box = first(lambda: find(text="Vanished"), lambda: find(text="Sine Song 4"), lambda: find(text="Noise"),
+                lambda: find(text="Songs, albums, artists"))
     tap_node(box)
     adb("shell", "input", "keyevent", "123")  # end of the text
     for _ in range(12):
@@ -1036,6 +1037,11 @@ def share_answers():
         return False
 
 
+def app_on_top():
+    out = adb("shell", "dumpsys", "activity", "activities")
+    return any("app.navimuse" in line for line in out.splitlines() if "ResumedActivity" in line)
+
+
 def trash_while_away():
     """Away from home (the share doesn't answer), a deleted song is hidden and waits; back home,
     opening the app moves it to the Trash on the share, and Put back brings it back."""
@@ -1082,9 +1088,14 @@ def trash_while_away():
                 break
             time.sleep(1)
         time.sleep(3)  # Samba up and taking logins
-    # Back home: the app opens and moves it.
-    adb("shell", "input", "keyevent", "3")  # Home
-    time.sleep(2)
+    # Back home: the app opens and moves it. Out of sight first, for sure: a slow emulator can
+    # miss a Home press, and then opening the app again doesn't count as coming back.
+    for _ in range(5):
+        adb("shell", "input", "keyevent", "3")  # Home
+        time.sleep(3)
+        if not app_on_top():
+            break
+    assert not app_on_top(), "the app didn't go to the background"
     adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
     for _ in range(60):
         if os.path.exists(trashed):
