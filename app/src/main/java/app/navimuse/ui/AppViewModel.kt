@@ -487,20 +487,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 while (true) {
                     val page = api().allSongs(offset, 500)
                     if (page.isEmpty()) break
+                    val ghostly = ArrayList<Pair<Song, String>>()
+                    val playing = ArrayList<String>()
                     page.chunked(6).forEach { batch ->
                         coroutineScope {
                             batch.map { s -> async { s to runCatching { probe(s.id) }.getOrDefault(StreamCheck.Unreachable) } }.awaitAll()
                         }.forEach { (s, check) ->
                             if (check.ghostly()) {
-                                GhostSongs.mark(s, SongTrouble.reason(check))
+                                ghostly += s to SongTrouble.reason(check)
                                 found++
                             } else if (check == StreamCheck.Audio) {
-                                GhostSongs.clear(s.id)
+                                playing += s.id
                             }
                         }
                         checked += batch.size
                         _ghostScan.value = GhostScan(checked, found)
                     }
+                    // A page at a time: one save each, not one per song.
+                    GhostSongs.markAll(ghostly)
+                    GhostSongs.clear(playing)
                     if (page.size < 500) break
                     offset += page.size
                 }
@@ -524,23 +529,77 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun recheckGhosts(quiet: Boolean = false) {
         // Not the ones waiting to move to the Trash: they're hidden on purpose.
-        val ghosts = GhostSongs.all.value.keys.filterNot(TrashQueue::has)
+        val all = GhostSongs.all.value.values.filterNot { TrashQueue.has(it.id) }
+        // Deleted ones: forgotten once Navidrome stops listing them.
+        val deleted = all.filter { it.removed }.map { it.id }.let { if (quiet) it.shuffled().take(QUIET_CHECKS) else it }
+        // When the app opens, a handful at random: a big library can have thousands.
+        val ghosts = all.filterNot { it.removed }.map { it.id }.let { if (quiet) it.shuffled().take(QUIET_CHECKS) else it }
+        if (deleted.isNotEmpty()) forgetDropped(deleted)
         if (ghosts.isEmpty()) {
             if (!quiet) say("No ghost songs.")
             return
         }
         viewModelScope.launch {
-            var back = 0
+            val playing = ArrayList<String>()
             ghosts.chunked(6).forEach { batch ->
                 coroutineScope { batch.map { id -> async { id to runCatching { probe(id) }.getOrNull() } }.awaitAll() }
-                    .forEach { (id, check) ->
-                        if (check == StreamCheck.Audio) {
-                            GhostSongs.clear(id)
-                            back++
-                        }
-                    }
+                    .forEach { (id, check) -> if (check == StreamCheck.Audio) playing += id }
             }
+            GhostSongs.clear(playing)
+            val back = playing.size
             if (!quiet) say(if (back == 0) "Still ghosts, all ${ghosts.size}." else "$back song${if (back == 1) " plays" else "s play"} again.")
+        }
+    }
+
+    /** Forgets deleted ghost songs that Navidrome doesn't list any more. */
+    private fun forgetDropped(ids: List<String>) {
+        val login = app.login.value ?: return
+        viewModelScope.launch {
+            val native = NavidromeNative(app.http, login)
+            val dropped = ArrayList<String>()
+            ids.chunked(8).forEach { batch ->
+                coroutineScope { batch.map { id -> async { id to runCatching { native.lookup(id) } } }.awaitAll() }
+                    .forEach { (id, r) -> if (r.isSuccess && r.getOrNull().let { it == null || it.missing }) dropped += id }
+            }
+            GhostSongs.clear(dropped)
+        }
+    }
+
+    private val _ghostRemoval = MutableStateFlow<TrashMover.GhostRemoval?>(null)
+
+    /** Deleting ghost songs, while it runs. */
+    val ghostRemoval: StateFlow<TrashMover.GhostRemoval?> = _ghostRemoval.asStateFlow()
+    private var ghostRemovalJob: Job? = null
+
+    /**
+     * Deletes ghost songs [ids] (see TrashMover.removeGhosts): Navidrome's quick scan drops the
+     * ones whose files are gone; one it still lists that still won't play has its file moved to
+     * the Trash on the NAS.
+     */
+    fun deleteGhosts(ids: Collection<String>) {
+        if (ghostRemovalJob?.isActive == true) return
+        val ghosts = ids.mapNotNull { GhostSongs.all.value[it] }
+        if (ghosts.isEmpty()) return
+        _ghostRemoval.value = TrashMover.GhostRemoval("Starting…")
+        ghostRemovalJob = viewModelScope.launch {
+            try {
+                val result = TrashMover.removeGhosts(app, ghosts) { _ghostRemoval.value = it }
+                _duplicates.update { s ->
+                    s?.copy(
+                        groups = s.groups.mapNotNull { g ->
+                            val left = g.songs.filterNot { it.id in result.handled }
+                            if (left.size < 2) null else g.copy(songs = left, keep = g.keep?.takeIf { k -> left.any { it.id == k } })
+                        },
+                    )
+                }
+                say(result.summary)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                say(friendly(e))
+            } finally {
+                _ghostRemoval.value = null
+            }
         }
     }
 
@@ -1132,5 +1191,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         /** The playlist "Save for later" adds songs to. */
         const val SAVED_FOR_LATER = "Saved for later"
+
+        /** Ghost songs checked again each time the app opens (at random, for big libraries). */
+        private const val QUIET_CHECKS = 100
     }
 }

@@ -432,7 +432,7 @@ private fun GhostSongsRow() {
     val allGhosts by app.navimuse.data.GhostSongs.all.collectAsState()
     // Songs waiting to move to the Trash are on the Trash page instead.
     val waiting by app.navimuse.data.TrashQueue.all.collectAsState()
-    val ghosts = allGhosts.filterKeys { id -> waiting.none { it.songId == id } }
+    val ghosts = app.navimuse.data.GhostSongs.listed(allGhosts, waiting.map { it.songId }.toSet())
     ListItem(
         headlineContent = { Text(if (ghosts.isEmpty()) "Ghost songs" else "Ghost songs (${ghosts.size})") },
         supportingContent = {

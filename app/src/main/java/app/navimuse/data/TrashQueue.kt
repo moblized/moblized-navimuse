@@ -30,6 +30,11 @@ object TrashQueue {
          * file wasn't there). Not tried again by itself; opening the Trash tries again.
          */
         val problem: String? = null,
+        /**
+         * A ghost song deleted away from home: if its file turns out to be gone already, there's
+         * nothing to move, and that's done too.
+         */
+        val ghost: Boolean = false,
     )
 
     private var prefs: SharedPreferences? = null
@@ -54,6 +59,12 @@ object TrashQueue {
 
     fun add(entry: Entry) = change { list -> list.filterNot { it.songId == entry.songId } + entry }
 
+    /** [add] for many at once (one write). */
+    fun addAll(entries: List<Entry>) {
+        val ids = entries.map { it.songId }.toSet()
+        change { list -> list.filterNot { it.songId in ids } + entries }
+    }
+
     fun remove(songId: String) = change { list -> list.filterNot { it.songId == songId } }
 
     /** Its file is in the Trash now. */
@@ -77,7 +88,7 @@ object TrashQueue {
         entries.forEach { e ->
             put(
                 JSONObject().put("id", e.songId).put("title", e.title).put("artist", e.artist).put("album", e.album)
-                    .put("path", e.path ?: JSONObject.NULL).put("at", e.queuedAt).put("problem", e.problem ?: JSONObject.NULL),
+                    .put("path", e.path ?: JSONObject.NULL).put("at", e.queuedAt).put("problem", e.problem ?: JSONObject.NULL).put("ghost", e.ghost),
             )
         }
     }.toString()
@@ -95,6 +106,7 @@ object TrashQueue {
                 path = o.optString("path").takeIf { !o.isNull("path") && it.isNotBlank() },
                 queuedAt = o.optLong("at"),
                 problem = o.optString("problem").takeIf { !o.isNull("problem") && it.isNotBlank() },
+                ghost = o.optBoolean("ghost", false),
             )
         }.distinctBy { it.songId }
     }

@@ -6,6 +6,7 @@ import struct
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -1116,6 +1117,87 @@ def trash_while_away():
     back()  # Collection
 
 
+ND_AUTH = "u=admin&p=secret123&v=1.16.1&c=smoke&f=json"
+
+
+def nd(method, **params):
+    q = urllib.parse.urlencode(params)
+    with urllib.request.urlopen(f"http://localhost:4533/rest/{method}?{q}&{ND_AUTH}", timeout=30) as r:
+        return json.load(r)["subsonic-response"]
+
+
+def nd_song_titles(query):
+    found = nd("search3", query=query, songCount=20, artistCount=0, albumCount=0)
+    return [s.get("title") for s in found.get("searchResult3", {}).get("song", [])]
+
+
+def nd_quick_scan():
+    nd("startScan")
+    time.sleep(2)
+    for _ in range(60):
+        if not nd("getScanStatus").get("scanStatus", {}).get("scanning"):
+            return
+        time.sleep(2)
+
+
+def delete_ghosts():
+    """A song's file moved away with no Navidrome scan since (so its Missing Files page is empty):
+    it won't play, so it's a ghost. Deleted from the Ghost songs page, one picked by hand and the
+    rest with Delete all: Navidrome's quick scan drops them, and no file is deleted."""
+    song_file = "music/Test Artist/Sine Album/04.mp3"
+    aside = "sine-song-4-moved-away.mp3"
+    os.replace(song_file, aside)
+    try:
+        assert "Sine Song 4" in nd_song_titles("Sine Song 4"), "Navidrome dropped the song with no scan"
+        adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+        time.sleep(2)
+        tap(text="Collection")
+        tap(desc="Settings")
+        settings_tab("Playback")
+        row = None
+        for _ in range(8):
+            row = find(text="Ghost songs", contains=True)
+            if row is not None:
+                break
+            adb("shell", "input", "swipe", "540", "1700", "540", "700", "400")
+            time.sleep(1)
+        assert row is not None, "no Ghost songs row in Settings"
+        tap_node(row)
+        tap(text="Look for them")
+        wait_for(text="Checked all", contains=True, timeout=180)
+        wait_for(text="Sine Song 4", timeout=20)
+        shot("15l-ghosts-to-delete")
+        # One picked by hand.
+        tap(text="Sine Song 4")
+        tap(text="Delete (1)")
+        wait_for(text="Delete this ghost song?")
+        shot("15m-delete-ghost-dialog")
+        tap(text="Delete", last=True)
+        note = wait_for(text="Deleted 1 ghost song", contains=True, timeout=240)
+        print(f"  {note.get('text')}", flush=True)
+        assert "dropped by Navidrome's scan" in note.get("text", ""), "the deleted ghost wasn't dropped by Navidrome's scan"
+        assert "Sine Song 4" not in nd_song_titles("Sine Song 4"), "Navidrome still lists the deleted ghost"
+        assert find(text="Sine Song 4") is None, "the deleted ghost is still on the Ghost songs list"
+        # The rest at once.
+        tap(text="Delete all", contains=True)
+        wait_for(text="ghost song", contains=True)
+        tap(text="Delete", last=True)
+        wait_for(text="No ghost songs", contains=True, timeout=240)
+        shot("15n-ghosts-deleted")
+    finally:
+        # The file comes back (it was only moved), and Navidrome lists it again.
+        if os.path.exists(aside):
+            os.replace(aside, song_file)
+        nd_quick_scan()
+    for _ in range(30):
+        if "Sine Song 4" in nd_song_titles("Sine Song 4"):
+            break
+        time.sleep(2)
+    assert "Sine Song 4" in nd_song_titles("Sine Song 4"), "the song didn't come back after its file did"
+    back()  # Settings
+    back()  # Collection
+
+
 def repeat_mode():
     out = adb("shell", "dumpsys", "media_session")
     return "one" if "Repeat one" in out else "all" if "Repeat all" in out else "off"
@@ -1190,6 +1272,7 @@ for name, fn in [
     ("ghost songs: listed, and found by looking through the library", ghost_songs),
     ("duplicates: move a copy to the Trash on the share, then put it back", trash_and_put_back),
     ("away from home: a deleted song waits, then moves to the Trash at home", trash_while_away),
+    ("delete ghost songs: one picked, then all; Navidrome's scan drops them", delete_ghosts),
     ("a song the phone can't play switches by itself", unplayable_switches),
     ("autoplay radio after the last song", autoplay_radio),
     ("safety, settings, dark mode + dark icon", settings_and_dark),

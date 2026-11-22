@@ -29,6 +29,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +44,7 @@ import app.navimuse.ui.AppViewModel
 import app.navimuse.ui.components.ActionPill
 import app.navimuse.ui.components.CardTone
 import app.navimuse.ui.components.Cover
+import app.navimuse.ui.components.DeleteGhostsDialog
 import app.navimuse.ui.components.EmptyBox
 import app.navimuse.ui.components.FloatingTopBar
 import app.navimuse.ui.components.InfoCard
@@ -59,6 +63,18 @@ fun DuplicatesScreen(vm: AppViewModel, onBack: () -> Unit) {
     val scan by vm.duplicates.collectAsState()
     val share by vm.shareLogin.collectAsState()
     val ghosts by GhostSongs.all.collectAsState()
+    val removal by vm.ghostRemoval.collectAsState()
+    var confirm by remember { mutableStateOf<List<String>?>(null) }
+    confirm?.let { ids ->
+        DeleteGhostsDialog(
+            count = ids.size,
+            onDismiss = { confirm = null },
+            onConfirm = {
+                vm.deleteGhosts(ids)
+                confirm = null
+            },
+        )
+    }
     // Look straight away the first time.
     LaunchedEffect(Unit) { if (vm.duplicates.value == null) vm.lookForDuplicates() }
     Column(Modifier.fillMaxSize()) {
@@ -91,9 +107,19 @@ fun DuplicatesScreen(vm: AppViewModel, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (s == null || s.done) ActionPill("Look again", Icons.Filled.Search, primary = s == null) { vm.lookForDuplicates() }
+                    if (s == null || s.done) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ActionPill("Look again", Icons.Filled.Search, primary = s == null) { vm.lookForDuplicates() }
+                            // The copies that won't play: old entries, usually with no file left.
+                            val old = s?.groups.orEmpty().flatMap { g -> g.songs.filter { it.id in ghosts } }.map { it.id }.distinct()
+                            if (old.isNotEmpty() && removal == null) {
+                                ActionPill("Delete ${old.size} old entr${if (old.size == 1) "y" else "ies"}", Icons.Filled.Delete) { confirm = old }
+                            }
+                        }
+                    }
                 }
             }
+            removal?.let { r -> item { GhostRemovalProgress(r) } }
             val groups = scan?.groups.orEmpty()
             if (scan?.done == true && scan?.error == null && groups.isEmpty()) {
                 item { EmptyBox("No duplicates. Every song is in your library once.") }
@@ -121,7 +147,7 @@ fun DuplicatesScreen(vm: AppViewModel, onBack: () -> Unit) {
                             keep = song.id == g.keep,
                             ghost = song.id in ghosts,
                             onPlay = { vm.play(listOf(song)) },
-                            onTrash = { ui.trashSong(song) },
+                            onTrash = { if (song.id in ghosts) confirm = listOf(song.id) else ui.trashSong(song) },
                         )
                     }
                 }
@@ -171,6 +197,8 @@ private fun CopyRow(song: Song, keep: Boolean, ghost: Boolean, onPlay: () -> Uni
         if (!ghost) {
             IconButton(onClick = onPlay) { Icon(Icons.Filled.PlayArrow, "Play this copy", tint = muted) }
             IconButton(onClick = onTrash) { Icon(Icons.Filled.Delete, "Move this copy to the Trash", tint = muted) }
+        } else {
+            IconButton(onClick = onTrash) { Icon(Icons.Filled.Delete, "Delete this old entry", tint = muted) }
         }
     }
 }
