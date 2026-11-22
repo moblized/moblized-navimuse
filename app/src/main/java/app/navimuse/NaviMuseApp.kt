@@ -93,6 +93,9 @@ class NaviMuseApp : Application() {
         SymfoniumStyles.init(this)
         app.navimuse.data.Blocklist.init(this)
         app.navimuse.data.GhostSongs.init(this)
+        // Songs deleted away from home: keep checking (on Wi-Fi) until they're in the Trash.
+        app.navimuse.data.TrashQueue.init(this)
+        app.navimuse.trash.TrashQueueWorker.sync(this)
         // Loads the list of downloads, so songs saved on the phone play from it straight away.
         Downloads.manager(this)
         UpdateWorker.schedule(this, _settings.value.autoUpdate)

@@ -1018,6 +1018,86 @@ def trash_and_put_back():
     back()  # Collection
 
 
+def more_for(title):
+    """The ⋯ button on the row showing [title]."""
+    row = wait_for(text=title)
+    y = sum(map(int, re.findall(r"\d+", row.get("bounds"))[1::2])) // 2
+    mores = [n for n in dump().iter("node") if n.get("content-desc") == "More"]
+    assert mores, f"no ⋯ buttons next to {title!r}"
+    return min(mores, key=lambda n: abs(sum(map(int, re.findall(r"\d+", n.get("bounds"))[1::2])) // 2 - y))
+
+
+def share_answers():
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", 445), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+def trash_while_away():
+    """Away from home (the share doesn't answer), a deleted song is hidden and waits; back home,
+    opening the app moves it to the Trash on the share, and Put back brings it back."""
+    song_file = "music/Test Artist/Sine Album/04.mp3"
+    trashed = "music/_Trash/Test Artist/Sine Album/04.mp3"
+    subprocess.run(["docker", "stop", "samba"], check=True, timeout=90, capture_output=True)
+    try:
+        assert not share_answers(), "the share still answers after stopping it"
+        adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+        time.sleep(2)
+        tap(text="Search")
+        box = first(lambda: find(text="Vanished"), lambda: find(text="Noise"), lambda: find(text="Songs, albums, artists"))
+        tap_node(box)
+        adb("shell", "input", "keyevent", "123")  # end of the text
+        for _ in range(12):
+            adb("shell", "input", "keyevent", "67")  # delete
+        type_text("Sine Song 4")
+        wait_for(text="Sine Song 4", timeout=20)
+        hide_keyboard()
+        tap_node(more_for("Sine Song 4"))
+        tap_node(scroll_to("Move to Trash", swipes=3))
+        wait_for(text="Move to Trash?")
+        tap(text="Move to Trash", last=True)
+        wait_for(text="next time you're on home Wi-Fi", contains=True, timeout=40)
+        print(f"  {find(text='next time you', contains=True).get('text')}", flush=True)
+        shot("15i-trash-queued")
+        assert os.path.exists(song_file) and not os.path.exists(trashed), "the file moved while the share was away"
+        tap(text="Collection")
+        tap(desc="Settings")
+        settings_tab("Playback")
+        assert scroll_to("1 song waiting to move there next time you're on home Wi-Fi.") is not None
+        tap_node(scroll_to("Trash"))
+        wait_for(text="Waiting for home Wi-Fi (1)", timeout=30)
+        assert find(text="Sine Song 4") is not None, "the waiting song isn't on the Trash page"
+        wait_for(text="Can't reach your NAS from here", contains=True, timeout=30)
+        shot("15j-trash-waiting")
+    finally:
+        subprocess.run(["docker", "start", "samba"], check=True, timeout=90, capture_output=True)
+        for _ in range(60):
+            if share_answers():
+                break
+            time.sleep(1)
+        time.sleep(3)  # Samba up and taking logins
+    # Back home: the app opens and moves it.
+    adb("shell", "input", "keyevent", "3")  # Home
+    time.sleep(2)
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    for _ in range(60):
+        if os.path.exists(trashed):
+            break
+        time.sleep(1)
+    assert os.path.exists(trashed) and not os.path.exists(song_file), "back home, the waiting song wasn't moved to the Trash"
+    wait_for(text="Put back", timeout=60)
+    assert find(text="Waiting for home Wi-Fi (1)") is None, "the song still shows as waiting after it moved"
+    shot("15k-trash-moved-at-home")
+    tap(text="Put back")
+    wait_for(text="The Trash is empty.", timeout=60)
+    assert os.path.exists(song_file) and not os.path.exists(trashed), "Put back didn't put it back"
+    back()  # Settings
+    back()  # Collection
+
+
 def repeat_mode():
     out = adb("shell", "dumpsys", "media_session")
     return "one" if "Repeat one" in out else "all" if "Repeat all" in out else "off"
@@ -1091,6 +1171,7 @@ for name, fn in [
     ("a song whose file is gone on the server is skipped with a note", missing_song_skips),
     ("ghost songs: listed, and found by looking through the library", ghost_songs),
     ("duplicates: move a copy to the Trash on the share, then put it back", trash_and_put_back),
+    ("away from home: a deleted song waits, then moves to the Trash at home", trash_while_away),
     ("a song the phone can't play switches by itself", unplayable_switches),
     ("autoplay radio after the last song", autoplay_radio),
     ("safety, settings, dark mode + dark icon", settings_and_dark),

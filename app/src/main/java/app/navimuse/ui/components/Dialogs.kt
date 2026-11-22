@@ -284,7 +284,8 @@ fun TrashSongDialog(song: Song, ready: Boolean, onDismiss: () -> Unit, onConfirm
                 if (ready) {
                     "\"${song.title}\" (${song.album.ifBlank { song.artist }}) moves to the _Trash folder in your music share, " +
                         "and Navidrome stops listing it. You can put it back from Settings → Playback → Trash; after " +
-                        "${app.navimuse.net.SafetyGuard.TRASH_DAYS} days there it's deleted for good (unless that's turned off)."
+                        "${app.navimuse.net.SafetyGuard.TRASH_DAYS} days there it's deleted for good (unless that's turned off). " +
+                        "Away from home, it's hidden now and moves next time you're on home Wi-Fi."
                 } else {
                     "To delete songs, NaviMuse needs your music share on the NAS. Set it up in Settings → General → Music folder (SMB)."
                 },
