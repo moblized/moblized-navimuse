@@ -1250,7 +1250,8 @@ def delete_playlist():
     wait_for(text=f'Deleted "{name}"', contains=True, timeout=30)
     assert not playlist_ids(name), "the playlist is still in Navidrome after deleting it from its page"
     # Restored from Recently deleted.
-    tap_node(scroll_clear("Recently deleted (1)"))
+    # The last row, just above the mini player (the list can't scroll it any higher).
+    tap_node(scroll_to("Recently deleted (1)"))
     wait_for(text=name)
     shot("15q-recently-deleted")
     tap(text="Restore")
