@@ -6,7 +6,8 @@ class BlockedRequestException(val request: String, reason: String) : Exception(r
 /**
  * The one door every request goes through. Anything not on these lists is refused before it's
  * sent, so the app can't delete or overwrite songs, playlists or anything else on your server,
- * even by mistake or from a bug elsewhere in the code.
+ * even by mistake or from a bug elsewhere in the code. The one delete: a playlist you just
+ * confirmed deleting in the app ([permitPlaylistDelete]), once.
  */
 object SafetyGuard {
     /** Requests that only read. */
@@ -28,12 +29,37 @@ object SafetyGuard {
     /** The only parameters [updatePlaylist] may carry: which playlist, and songs to add to it. */
     private val updatePlaylistParams = setOf("playlistId", "songIdToAdd")
 
+    /** How long a confirmed playlist delete may take to be sent. */
+    private const val PLAYLIST_DELETE_WINDOW_MS = 60_000L
+
+    /** Playlists you just confirmed deleting, with until when the delete may be sent. */
+    private val playlistDeletes = HashMap<String, Long>()
+
+    /**
+     * Lets one deletePlaylist for [playlistId] through, in the next minute. Only the app's
+     * Delete playlist confirmation calls this; a delete without it is refused like any other.
+     */
+    fun permitPlaylistDelete(playlistId: String, now: Long = System.currentTimeMillis()) {
+        synchronized(playlistDeletes) { playlistDeletes[playlistId] = now + PLAYLIST_DELETE_WINDOW_MS }
+    }
+
     /** Checks a Navidrome (Subsonic API) request. [params] are the request's own parameters, without login details. */
-    fun check(method: String, params: List<Pair<String, String>>) {
+    fun check(method: String, params: List<Pair<String, String>>, now: Long = System.currentTimeMillis()) {
         val name = method.removeSuffix(".view")
         val keys = params.map { it.first }.toSet()
         when {
             name in readOnly -> Unit
+            name == "deletePlaylist" -> {
+                val ids = params.filter { it.first == "id" }.map { it.second }
+                if (keys != setOf("id") || ids.size != 1) {
+                    throw BlockedRequestException(name, "A playlist delete names exactly one playlist and nothing else.")
+                }
+                // Used up either way: one confirmation, one delete.
+                val until = synchronized(playlistDeletes) { playlistDeletes.remove(ids[0]) }
+                if (until == null || now > until) {
+                    throw BlockedRequestException(name, "Deleting a playlist needs you to confirm it in the app first, so it was never sent.")
+                }
+            }
             name !in additive -> throw BlockedRequestException(
                 name,
                 "\"$name\" isn't on this app's list of safe requests, so it was never sent to your server.",

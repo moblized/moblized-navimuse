@@ -79,11 +79,20 @@ jobs:
         run: |
           mkdir -p smoke-out
           docker logs navidrome > smoke-out/navidrome.log 2>&1 || true
-          if grep -Ei 'deletePlaylist|deleteShare|deleteUser|songIndexToRemove' smoke-out/navidrome.log; then
+          if grep -Ei 'deleteShare|deleteUser|songIndexToRemove' smoke-out/navidrome.log; then
             echo "FAIL  server received a delete request" | tee -a smoke-out/results.txt
             exit 1
           fi
-          echo "PASS  no delete requests in the Navidrome log" | tee -a smoke-out/results.txt
+          # deletePlaylist: only the playlists the test deleted on purpose (the app asks you first).
+          touch smoke-out/deleted-playlists.txt
+          bad=$(grep -oE 'deletePlaylist[^ "]*' smoke-out/navidrome.log \
+            | grep -oE '[?&]id=[A-Za-z0-9_-]+' | cut -d= -f2 | sort -u \
+            | grep -vxF -f smoke-out/deleted-playlists.txt || true)
+          if [ -n "$bad" ]; then
+            echo "FAIL  server received a delete for playlists the test didn't delete: $bad" | tee -a smoke-out/results.txt
+            exit 1
+          fi
+          echo "PASS  no delete requests in the Navidrome log, but the test's own playlist deletes" | tee -a smoke-out/results.txt
 
       - name: Keep results as a workflow artifact
         if: always()

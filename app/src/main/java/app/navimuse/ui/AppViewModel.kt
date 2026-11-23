@@ -29,6 +29,7 @@ import app.navimuse.net.TrashItem
 import app.navimuse.net.NoSuchShare
 import app.navimuse.net.ShareGuess
 import app.navimuse.data.TrashQueue
+import app.navimuse.data.DeletedPlaylists
 import app.navimuse.trash.TrashMover
 import app.navimuse.trash.TrashQueueWorker
 import app.navimuse.net.TidalLinks
@@ -41,6 +42,7 @@ import app.navimuse.net.AudioMuseLogin
 import app.navimuse.net.Lyrics
 import app.navimuse.net.Playlist
 import app.navimuse.net.PlaylistNames
+import app.navimuse.net.SafetyGuard
 import app.navimuse.net.ServerInfo
 import app.navimuse.net.ServerLogin
 import app.navimuse.net.ServerUrl
@@ -110,6 +112,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun say(message: String) {
         _messages.tryEmit(message)
     }
+
+    /** A message with a button, such as Undo. */
+    data class Note(val text: String, val action: String, val onAction: () -> Unit)
+
+    private val _notes = MutableSharedFlow<Note>(extraBufferCapacity = 4)
+    val notes: SharedFlow<Note> = _notes.asSharedFlow()
 
     private fun action(busyLabel: String? = null, block: suspend () -> Unit) {
         viewModelScope.launch {
@@ -1181,6 +1189,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val name = PlaylistNames.keptCopyName(playlist.name, existingNames)
         api().createPlaylist(name, songs.map { it.id })
         return name
+    }
+
+    // --- deleting playlists (restorable for 30 days) -------------------------------------------
+
+    val deletedPlaylists: StateFlow<List<DeletedPlaylists.Entry>> get() = DeletedPlaylists.all
+
+    /** Your own playlists (as an admin, Navidrome would let you delete anyone's: NaviMuse won't). */
+    fun canDelete(p: Playlist): Boolean = p.owner == null || p.owner == login.value?.username
+
+    /**
+     * Deletes playlist [p] from Navidrome (its songs stay in your library). Its name and songs are
+     * kept on the phone first, so Undo, or Restore within 30 days, makes it again.
+     */
+    fun deletePlaylist(p: Playlist) = action("Deleting playlist…") {
+        if (!canDelete(p)) {
+            say("\"${p.name}\" is ${p.owner}'s playlist, so NaviMuse won't delete it.")
+            return@action
+        }
+        val songs = api().playlist(p.id).songs
+        val entry = DeletedPlaylists.Entry(p.id, p.name, songs.map { it.id }, songs.sumOf { it.duration }, System.currentTimeMillis())
+        DeletedPlaylists.add(entry)
+        SafetyGuard.permitPlaylistDelete(p.id)
+        try {
+            api().deletePlaylist(p.id)
+        } catch (e: Exception) {
+            DeletedPlaylists.remove(p.id)
+            throw e
+        }
+        if (p.id in settings.value.autoDownloadPlaylists) {
+            updateSettings { it.copy(autoDownloadPlaylists = it.autoDownloadPlaylists - p.id) }
+        }
+        _playlistsVersion.update { it + 1 }
+        _notes.tryEmit(Note("Deleted \"${p.name}\". Its songs are still in your library.", "Undo") { restorePlaylist(entry) })
+    }
+
+    /** Makes a deleted playlist again, with the same name and songs. */
+    fun restorePlaylist(entry: DeletedPlaylists.Entry) = action("Restoring playlist…") {
+        val name = PlaylistNames.safe(entry.name)
+        api().createPlaylist(name, entry.songIds)
+        DeletedPlaylists.remove(entry.playlistId)
+        _playlistsVersion.update { it + 1 }
+        say(if (name != entry.name.trim()) "Restored as \"$name\" (AudioMuse-AI deletes names ending in _automatic)" else "Restored \"$name\"")
     }
 
     suspend fun ownPlaylists(): List<Playlist> {

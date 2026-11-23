@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -133,6 +134,8 @@ sealed interface Route {
     data object Duplicates : Route
     /** Songs moved to the Trash on the NAS, to put back. */
     data object Trash : Route
+    /** Playlists you deleted in the last 30 days, to restore. */
+    data object DeletedPlaylists : Route
     data object Albums : Route
     data object Artists : Route
     data object Playlists : Route
@@ -195,6 +198,13 @@ fun AppRoot(vm: AppViewModel) {
     LaunchedEffect(Unit) {
         vm.onForeground()
         vm.messages.collect { snackbar.showSnackbar(it) }
+    }
+    // Messages with a button (Undo after deleting a playlist).
+    LaunchedEffect("notes") {
+        vm.notes.collect { n ->
+            val r = snackbar.showSnackbar(n.text, actionLabel = n.action, withDismissAction = true, duration = SnackbarDuration.Long)
+            if (r == SnackbarResult.ActionPerformed) n.onAction()
+        }
     }
     LaunchedEffect(playerState.error) {
         playerState.error?.let {
@@ -297,6 +307,7 @@ fun AppRoot(vm: AppViewModel) {
                                 Route.GhostSongs -> GhostSongsScreen(vm, onBack)
                                 Route.Duplicates -> DuplicatesScreen(vm, onBack)
                                 Route.Trash -> TrashScreen(vm, onBack)
+                                Route.DeletedPlaylists -> app.navimuse.ui.screens.DeletedPlaylistsScreen(vm, onBack)
                                 Route.Albums -> CollectionAlbumsScreen(vm, onBack)
                                 Route.Artists -> CollectionArtistsScreen(vm, onBack)
                                 Route.Playlists -> CollectionPlaylistsScreen(vm, onBack)

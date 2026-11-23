@@ -43,7 +43,7 @@ import java.util.Date
 
 private val neverDoes = listOf(
     "Delete songs, albums or files",
-    "Delete or rename playlists",
+    "Delete a playlist you didn't confirm deleting, or rename one",
     "Replace the songs in an existing playlist",
     "Remove songs from a playlist",
     "Make playlists ending in _automatic (AudioMuse-AI deletes those)",
@@ -54,6 +54,7 @@ private val neverDoes = listOf(
 private val canDo = listOf(
     "Stream and browse your library",
     "Make new playlists and add songs to the end of your own",
+    "Delete one of your own playlists when you confirm it (restorable for 30 days)",
     "Add and remove favourites (hearts)",
     "Report what you play, so play counts stay right",
 )
