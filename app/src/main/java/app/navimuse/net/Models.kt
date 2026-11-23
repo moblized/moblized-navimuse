@@ -63,6 +63,12 @@ data class Playlist(
     val coverArt: String?,
     val comment: String?,
 ) {
+    /**
+     * Whether [username] owns it. Navidrome's user names don't care about capitals ("Moblized"
+     * owns what "moblized" signs in to), and a playlist with no owner listed counts as yours.
+     */
+    fun ownedBy(username: String?): Boolean = owner == null || (username != null && owner.trim().equals(username.trim(), ignoreCase = true))
+
     /** AudioMuse-AI deletes and remakes this playlist every time it runs clustering. */
     val isAudioMuseManaged: Boolean get() = PlaylistNames.isAudioMuseManaged(name)
 }
