@@ -1244,7 +1244,9 @@ def delete_playlist():
     # From its own page.
     deleted_on_purpose(again[0])
     tap_node(scroll_clear(name))
-    tap(desc="Delete playlist")
+    wait_for(desc="Delete playlist")  # the button next to Copy
+    tap(desc="More")
+    tap(text="Delete playlist")  # and in the ⋯ menu
     wait_for(text=f'Delete "{name}"?')
     tap(text="Delete", last=True)
     wait_for(text=f'Deleted "{name}"', contains=True, timeout=30)

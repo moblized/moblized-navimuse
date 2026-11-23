@@ -199,9 +199,9 @@ private fun StarAction(id: String, kind: SubsonicClient.StarKind, initial: Boole
     ) { vm.setStar(id, kind, !starred) }
 }
 
-/** The "…" button: play next, add to queue, add to a playlist. */
+/** The "…" button: play next, add to queue, add to a playlist (and [onDelete], for a playlist of yours). */
 @Composable
-private fun MoreAction(songs: List<Song>) {
+private fun MoreAction(songs: List<Song>, onDelete: (() -> Unit)? = null) {
     val ui = LocalUi.current
     var open by remember { mutableStateOf(false) }
     Box {
@@ -210,6 +210,7 @@ private fun MoreAction(songs: List<Song>) {
             MenuItem("Play next", Icons.Filled.SkipNext) { open = false; ui.vm.playNext(songs) }
             MenuItem("Add to queue", Icons.AutoMirrored.Filled.QueueMusic) { open = false; ui.vm.addToQueue(songs) }
             MenuItem("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { open = false; ui.pickPlaylistFor(songs) }
+            onDelete?.let { delete -> MenuItem("Delete playlist", Icons.Filled.Delete) { open = false; delete() } }
         }
     }
 }
@@ -432,8 +433,9 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
                         CircleAction(Icons.Filled.ContentCopy, "Copy playlist") {
                             ui.saveAsPlaylist(songs, "${app.navimuse.net.PlaylistNames.pretty(p.name)} copy")
                         }
-                        if (vm.canDelete(p)) CircleAction(Icons.Filled.Delete, "Delete playlist") { deleting = true }
-                        MoreAction(songs)
+                        val mine = vm.canDelete(p)
+                        if (mine) CircleAction(Icons.Filled.Delete, "Delete playlist") { deleting = true }
+                        MoreAction(songs, onDelete = if (mine) ({ deleting = true }) else null)
                     }
                     ActionsRow {
                         ActionPill("Play", Icons.Filled.PlayArrow, Modifier.weight(1f), primary = true) { vm.play(songs, from = from) }

@@ -1203,7 +1203,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val deletedPlaylists: StateFlow<List<DeletedPlaylists.Entry>> get() = DeletedPlaylists.all
 
     /** Your own playlists (as an admin, Navidrome would let you delete anyone's: NaviMuse won't). */
-    fun canDelete(p: Playlist): Boolean = p.owner == null || p.owner == login.value?.username
+    fun canDelete(p: Playlist): Boolean = p.ownedBy(login.value?.username)
 
     /**
      * Deletes playlist [p] from Navidrome (its songs stay in your library). Its name and songs are

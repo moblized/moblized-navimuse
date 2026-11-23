@@ -73,3 +73,20 @@ class DeletePlaylistTest {
         assertEquals(listOf("new"), DeletedPlaylists.all.value.map { it.playlistId })
     }
 }
+
+class PlaylistOwnerTest {
+    private fun playlist(owner: String?) = app.navimuse.net.Playlist("p", "Dark and heavy guitars", 0, 0, owner, false, null, null)
+
+    @Test
+    fun capitalsDontMatter() {
+        assertTrue(playlist("Moblized").ownedBy("moblized"))
+        assertTrue(playlist("moblized").ownedBy("Moblized "))
+    }
+
+    @Test
+    fun someoneElsesIsNotYours() {
+        org.junit.Assert.assertFalse(playlist("moe").ownedBy("moblized"))
+        org.junit.Assert.assertFalse(playlist("Moblized").ownedBy(null))
+        assertTrue(playlist(null).ownedBy("moblized"))
+    }
+}
