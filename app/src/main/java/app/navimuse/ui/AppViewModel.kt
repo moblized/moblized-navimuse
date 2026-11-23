@@ -637,13 +637,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (guesses.isEmpty()) throw IllegalStateException("Fill in the NAS address and Share (the share's name on your NAS, like \"media\").")
         val host = guesses[0].server
         if (!TrashMover.reachable(host)) throw IllegalStateException("Can't reach $host from here. Test this on your home Wi-Fi.")
-        val song = api().allSongs(0, 1).firstOrNull() ?: throw IllegalStateException("Your library has no songs to look for.")
-        val file = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in.")).songFile(song.id)
+        // A few songs that play, to look for: not a ghost song, whose file is gone (that would
+        // look like the wrong folder).
+        val native = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in."))
+        val files = ArrayList<NavidromeNative.SongFile>()
+        for (s in api().allSongs(0, 50).filterNot { GhostSongs.isGhost(it.id) }) {
+            if (files.size >= TEST_SONGS) break
+            runCatching { native.lookup(s.id) }.getOrNull()?.takeIf { !it.missing }?.let { files += it }
+        }
+        val file = files.firstOrNull() ?: throw IllegalStateException("Couldn't find a song in your library to look for.")
         val missing = ArrayList<String>()
         var opened: ShareLogin? = null
         for (g in guesses) {
             val found = try {
-                withContext(Dispatchers.IO) { MusicShare(g).use { it.locate(file.path) } }
+                withContext(Dispatchers.IO) { MusicShare(g).use { ms -> files.firstNotNullOfOrNull { ms.locate(it.path) } } }
             } catch (e: NoSuchShare) {
                 missing += e.share
                 continue
@@ -1244,5 +1251,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         /** Ghost songs checked again each time the app opens (at random, for big libraries). */
         private const val QUIET_CHECKS = 100
+
+        /** Songs the music folder Test looks for (any one found is enough). */
+        private const val TEST_SONGS = 5
     }
 }
