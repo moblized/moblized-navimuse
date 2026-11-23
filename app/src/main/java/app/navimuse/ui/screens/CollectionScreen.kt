@@ -1,5 +1,10 @@
 package app.navimuse.ui.screens
 
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.ui.graphics.Color
+import app.navimuse.ui.components.DeletePlaylistDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -212,6 +217,18 @@ fun CollectionPlaylistsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val ui = LocalUi.current
     val version by vm.playlistsVersion.collectAsState()
     val loaded = rememberLoad("playlists", version) { vm.api().playlists() }
+    val deleted by vm.deletedPlaylists.collectAsState()
+    var deleting by remember { mutableStateOf<app.navimuse.net.Playlist?>(null) }
+    deleting?.let { p ->
+        DeletePlaylistDialog(
+            p,
+            onDismiss = { deleting = null },
+            onConfirm = {
+                deleting = null
+                vm.deletePlaylist(p)
+            },
+        )
+    }
     Column(Modifier.fillMaxSize()) {
         FloatingTopBar("Playlists", solid = true, onBack = onBack)
         LoadBox(loaded) { playlists ->
@@ -246,7 +263,21 @@ fun CollectionPlaylistsScreen(vm: AppViewModel, onBack: () -> Unit) {
                     }
                 }
                 if (playlists.isEmpty()) item { EmptyBox("No playlists yet. Tap New playlist and give it a name, or save a mix or your queue.") }
-                items(playlists, key = { it.id }) { p -> PlaylistRow(p) { ui.navigate(Route.PlaylistPage(p.id)) } }
+                // Hold one of your own to delete it.
+                items(playlists, key = { it.id }) { p ->
+                    PlaylistRow(p, onLongClick = if (vm.canDelete(p)) ({ deleting = p }) else null) { ui.navigate(Route.PlaylistPage(p.id)) }
+                }
+                if (deleted.isNotEmpty()) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("Recently deleted (${deleted.size})") },
+                            supportingContent = { Text("Restore a playlist you deleted in the last ${app.navimuse.data.DeletedPlaylists.KEEP_DAYS} days") },
+                            leadingContent = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable { ui.navigate(Route.DeletedPlaylists) },
+                        )
+                    }
+                }
             }
         }
     }

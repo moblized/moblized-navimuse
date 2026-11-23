@@ -1198,6 +1198,74 @@ def delete_ghosts():
     back()  # Collection
 
 
+def playlist_ids(name):
+    return [p["id"] for p in api("getPlaylists").get("playlists", {}).get("playlist", []) if p.get("name") == name]
+
+
+def long_press(node):
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
+    x, y = (x1 + x2) // 2, (y1 + y2) // 2
+    adb("shell", "input", "swipe", str(x), str(y), str(x), str(y), "900")
+
+
+def deleted_on_purpose(playlist_id):
+    """The workflow's log check lets through deletePlaylist for these ids only."""
+    with open(f"{OUT}/deleted-playlists.txt", "a") as f:
+        f.write(playlist_id + "\n")
+
+
+def delete_playlist():
+    """Delete one of your playlists (held in the list), Undo it, delete it again from its page,
+    then restore it from Recently deleted: same name, same songs. Its songs are never touched."""
+    name = "Old Road Trip"
+    songs = [s["id"] for s in api("search3", "&query=Noise&songCount=3&artistCount=0&albumCount=0")["searchResult3"]["song"]][:3]
+    api("createPlaylist", "&" + urllib.parse.urlencode([("name", name)] + [("songId", i) for i in songs]))
+    first = playlist_ids(name)
+    assert len(first) == 1, f"couldn't make the test playlist: {first}"
+    adb("shell", "am", "start", "-n", "app.navimuse/.MainActivity")
+    time.sleep(2)
+    tap(text="Collection")
+    tap(text="Playlists")
+    # Held in the list.
+    deleted_on_purpose(first[0])
+    long_press(scroll_clear(name))
+    wait_for(text=f'Delete "{name}"?')
+    shot("15o-delete-playlist-dialog")
+    tap(text="Delete", last=True)
+    wait_for(text=f'Deleted "{name}"', contains=True, timeout=30)
+    shot("15p-playlist-deleted")
+    assert not playlist_ids(name), "the playlist is still in Navidrome after deleting it"
+    tap(text="Undo")
+    wait_for(text=f'Restored "{name}"', contains=True, timeout=30)
+    again = playlist_ids(name)
+    assert len(again) == 1, f"Undo didn't bring the playlist back: {again}"
+    got = [s["id"] for s in api("getPlaylist", f"&id={again[0]}")["playlist"].get("entry", [])]
+    assert got == songs, f"the restored playlist has other songs: {got} vs {songs}"
+    # From its own page.
+    deleted_on_purpose(again[0])
+    tap_node(scroll_clear(name))
+    tap(desc="Delete playlist")
+    wait_for(text=f'Delete "{name}"?')
+    tap(text="Delete", last=True)
+    wait_for(text=f'Deleted "{name}"', contains=True, timeout=30)
+    assert not playlist_ids(name), "the playlist is still in Navidrome after deleting it from its page"
+    # Restored from Recently deleted.
+    # The last row, just above the mini player (the list can't scroll it any higher).
+    tap_node(scroll_to("Recently deleted (1)"))
+    wait_for(text=name)
+    shot("15q-recently-deleted")
+    tap(text="Restore")
+    wait_for(text="No deleted playlists.", timeout=30)
+    back_again = playlist_ids(name)
+    assert len(back_again) == 1, f"Restore didn't bring the playlist back: {back_again}"
+    got = [s["id"] for s in api("getPlaylist", f"&id={back_again[0]}")["playlist"].get("entry", [])]
+    assert got == songs, f"the restored playlist has other songs: {got} vs {songs}"
+    for i in songs:
+        assert api("getSong", f"&id={i}").get("song"), f"song {i} is gone after deleting a playlist"
+    back()  # Playlists
+    back()  # Collection
+
+
 def repeat_mode():
     out = adb("shell", "dumpsys", "media_session")
     return "one" if "Repeat one" in out else "all" if "Repeat all" in out else "off"
@@ -1273,6 +1341,7 @@ for name, fn in [
     ("duplicates: move a copy to the Trash on the share, then put it back", trash_and_put_back),
     ("away from home: a deleted song waits, then moves to the Trash at home", trash_while_away),
     ("delete ghost songs: one picked, then all; Navidrome's scan drops them", delete_ghosts),
+    ("delete a playlist: Undo, delete from its page, restore from Recently deleted", delete_playlist),
     ("a song the phone can't play switches by itself", unplayable_switches),
     ("autoplay radio after the last song", autoplay_radio),
     ("safety, settings, dark mode + dark icon", settings_and_dark),

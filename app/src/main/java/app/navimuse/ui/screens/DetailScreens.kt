@@ -1,5 +1,7 @@
 package app.navimuse.ui.screens
 
+import androidx.compose.material.icons.filled.Delete
+import app.navimuse.ui.components.DeletePlaylistDialog
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -373,6 +375,20 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
     val player by vm.playerState.collectAsState()
     val version by vm.playlistsVersion.collectAsState()
     val loaded = rememberLoad(playlistId, version) { vm.api().playlist(playlistId) }
+    var deleting by remember { mutableStateOf(false) }
+    loaded.value?.playlist?.let { p ->
+        if (deleting) {
+            DeletePlaylistDialog(
+                p,
+                onDismiss = { deleting = false },
+                onConfirm = {
+                    deleting = false
+                    vm.deletePlaylist(p)
+                    onBack()
+                },
+            )
+        }
+    }
     DetailPage(loaded.value?.playlist?.name ?: "Playlist", onBack) { state ->
         LoadBox(loaded, Modifier.statusBarsPadding().padding(top = 56.dp)) { detail ->
             val p = detail.playlist
@@ -416,6 +432,7 @@ fun PlaylistScreen(vm: AppViewModel, playlistId: String, onBack: () -> Unit) {
                         CircleAction(Icons.Filled.ContentCopy, "Copy playlist") {
                             ui.saveAsPlaylist(songs, "${app.navimuse.net.PlaylistNames.pretty(p.name)} copy")
                         }
+                        if (vm.canDelete(p)) CircleAction(Icons.Filled.Delete, "Delete playlist") { deleting = true }
                         MoreAction(songs)
                     }
                     ActionsRow {

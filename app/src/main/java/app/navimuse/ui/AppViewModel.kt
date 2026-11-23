@@ -29,6 +29,7 @@ import app.navimuse.net.TrashItem
 import app.navimuse.net.NoSuchShare
 import app.navimuse.net.ShareGuess
 import app.navimuse.data.TrashQueue
+import app.navimuse.data.DeletedPlaylists
 import app.navimuse.trash.TrashMover
 import app.navimuse.trash.TrashQueueWorker
 import app.navimuse.net.TidalLinks
@@ -41,6 +42,7 @@ import app.navimuse.net.AudioMuseLogin
 import app.navimuse.net.Lyrics
 import app.navimuse.net.Playlist
 import app.navimuse.net.PlaylistNames
+import app.navimuse.net.SafetyGuard
 import app.navimuse.net.ServerInfo
 import app.navimuse.net.ServerLogin
 import app.navimuse.net.ServerUrl
@@ -110,6 +112,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun say(message: String) {
         _messages.tryEmit(message)
     }
+
+    /** A message with a button, such as Undo. */
+    data class Note(val text: String, val action: String, val onAction: () -> Unit)
+
+    private val _notes = MutableSharedFlow<Note>(extraBufferCapacity = 4)
+    val notes: SharedFlow<Note> = _notes.asSharedFlow()
 
     private fun action(busyLabel: String? = null, block: suspend () -> Unit) {
         viewModelScope.launch {
@@ -629,13 +637,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (guesses.isEmpty()) throw IllegalStateException("Fill in the NAS address and Share (the share's name on your NAS, like \"media\").")
         val host = guesses[0].server
         if (!TrashMover.reachable(host)) throw IllegalStateException("Can't reach $host from here. Test this on your home Wi-Fi.")
-        val song = api().allSongs(0, 1).firstOrNull() ?: throw IllegalStateException("Your library has no songs to look for.")
-        val file = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in.")).songFile(song.id)
+        // A few songs that play, to look for: not a ghost song, whose file is gone (that would
+        // look like the wrong folder).
+        val native = NavidromeNative(app.http, app.login.value ?: throw IllegalStateException("Not signed in."))
+        val files = ArrayList<NavidromeNative.SongFile>()
+        for (s in api().allSongs(0, 50).filterNot { GhostSongs.isGhost(it.id) }) {
+            if (files.size >= TEST_SONGS) break
+            runCatching { native.lookup(s.id) }.getOrNull()?.takeIf { !it.missing }?.let { files += it }
+        }
+        val file = files.firstOrNull() ?: throw IllegalStateException("Couldn't find a song in your library to look for.")
         val missing = ArrayList<String>()
         var opened: ShareLogin? = null
         for (g in guesses) {
             val found = try {
-                withContext(Dispatchers.IO) { MusicShare(g).use { it.locate(file.path) } }
+                withContext(Dispatchers.IO) { MusicShare(g).use { ms -> files.firstNotNullOfOrNull { ms.locate(it.path) } } }
             } catch (e: NoSuchShare) {
                 missing += e.share
                 continue
@@ -1183,6 +1198,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return name
     }
 
+    // --- deleting playlists (restorable for 30 days) -------------------------------------------
+
+    val deletedPlaylists: StateFlow<List<DeletedPlaylists.Entry>> get() = DeletedPlaylists.all
+
+    /** Your own playlists (as an admin, Navidrome would let you delete anyone's: NaviMuse won't). */
+    fun canDelete(p: Playlist): Boolean = p.owner == null || p.owner == login.value?.username
+
+    /**
+     * Deletes playlist [p] from Navidrome (its songs stay in your library). Its name and songs are
+     * kept on the phone first, so Undo, or Restore within 30 days, makes it again.
+     */
+    fun deletePlaylist(p: Playlist) = action("Deleting playlist…") {
+        if (!canDelete(p)) {
+            say("\"${p.name}\" is ${p.owner}'s playlist, so NaviMuse won't delete it.")
+            return@action
+        }
+        val songs = api().playlist(p.id).songs
+        val entry = DeletedPlaylists.Entry(p.id, p.name, songs.map { it.id }, songs.sumOf { it.duration }, System.currentTimeMillis())
+        DeletedPlaylists.add(entry)
+        SafetyGuard.permitPlaylistDelete(p.id)
+        try {
+            api().deletePlaylist(p.id)
+        } catch (e: Exception) {
+            DeletedPlaylists.remove(p.id)
+            throw e
+        }
+        if (p.id in settings.value.autoDownloadPlaylists) {
+            updateSettings { it.copy(autoDownloadPlaylists = it.autoDownloadPlaylists - p.id) }
+        }
+        _playlistsVersion.update { it + 1 }
+        _notes.tryEmit(Note("Deleted \"${p.name}\". Its songs are still in your library.", "Undo") { restorePlaylist(entry) })
+    }
+
+    /** Makes a deleted playlist again, with the same name and songs. */
+    fun restorePlaylist(entry: DeletedPlaylists.Entry) = action("Restoring playlist…") {
+        val name = PlaylistNames.safe(entry.name)
+        api().createPlaylist(name, entry.songIds)
+        DeletedPlaylists.remove(entry.playlistId)
+        _playlistsVersion.update { it + 1 }
+        say(if (name != entry.name.trim()) "Restored as \"$name\" (AudioMuse-AI deletes names ending in _automatic)" else "Restored \"$name\"")
+    }
+
     suspend fun ownPlaylists(): List<Playlist> {
         val me = login.value?.username
         return api().playlists().filter { (it.owner == null || it.owner == me) && !it.isAudioMuseManaged }
@@ -1194,5 +1251,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         /** Ghost songs checked again each time the app opens (at random, for big libraries). */
         private const val QUIET_CHECKS = 100
+
+        /** Songs the music folder Test looks for (any one found is enough). */
+        private const val TEST_SONGS = 5
     }
 }

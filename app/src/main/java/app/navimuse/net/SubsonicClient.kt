@@ -252,6 +252,14 @@ class SubsonicClient(
         return id
     }
 
+    /**
+     * Deletes a playlist (not its songs). SafetyGuard sends it only right after you confirm it
+     * in the app (SafetyGuard.permitPlaylistDelete).
+     */
+    suspend fun deletePlaylist(id: String) {
+        call("deletePlaylist", listOf("id" to id))
+    }
+
     /** Adds songs to the end of a playlist. Nothing already in it is touched. */
     suspend fun addToPlaylist(playlistId: String, songIds: List<String>) {
         songIds.chunked(BATCH).forEach { chunk ->

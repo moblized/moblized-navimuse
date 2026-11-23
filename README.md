@@ -17,6 +17,7 @@ An Android music player for **Navidrome** with **AudioMuse-AI** mixes, built so 
   - **Artist radio** and "sounds like" artists.
   - **Song path:** pick a start song and an end song, and get a smooth journey between them.
   - **Mood search** (optional, talks to AudioMuse-AI directly): type "calm piano for a rainy night" and get matching songs.
+- **Delete playlists:** the Delete button on a playlist's page, or hold it in Playlists. Its songs stay in your library, Undo is right there, and Playlists → Recently deleted restores it for 30 days (same name, same songs in order). Only your own playlists.
 - **Keep AudioMuse playlists:** AudioMuse-AI deletes every playlist ending in `_automatic` each time it runs clustering. NaviMuse marks those playlists and can save a normal copy, one at a time or all at once, so the next run leaves them alone.
 - **Playback** keeps going in the background, with notification, lock-screen and Bluetooth controls. Songs start after about a second of audio, the next song is pre-loaded so skips are instant, and every song reuses one connection to your server. Recent audio is cached on the phone (up to 1 GB). The queue comes back after a restart, and plays are reported to Navidrome.
 - **Playlist from a title:** tap New playlist (in Playlists or the Mixes tab), name it in plain words like "Gym", "Rainy Sunday" or "Skillet and friends", and NaviMuse fills it from your library, like Tidal. With AudioMuse-AI connected it picks by how songs sound; without it, from the genres, moods and artists the title names. Take songs out, ask for new picks, then save.
@@ -36,7 +37,8 @@ Every request passes through one gate, [`SafetyGuard`](app/src/main/java/app/nav
 
 | Never sent | Allowed |
 | --- | --- |
-| `deletePlaylist`, `deleteShare`, `deleteUser` and every other delete | Browsing, searching, streaming, album art |
+| `deleteShare`, `deleteUser` and every other delete, and `deletePlaylist` without your confirmation | Browsing, searching, streaming, album art |
+| Deleting someone else's playlist | `deletePlaylist` for one of your own playlists, once, right after you confirm it (NaviMuse keeps its songs for 30 days to restore) |
 | `createPlaylist` with a `playlistId` (this replaces an existing playlist's songs) | `createPlaylist` that makes a **new** playlist |
 | `updatePlaylist` with `songIndexToRemove`, a rename or a visibility change | `updatePlaylist` that only **adds** songs |
 | Playlist names ending in `_automatic` (AudioMuse-AI deletes those) | Favourites (star/unstar) and play reports (scrobble) |
@@ -87,7 +89,7 @@ For **Android Auto** with a sideloaded app: in the Android Auto settings on your
 
 Every push to `main` runs the tests, builds a signed release APK, and publishes it as a GitHub Release.
 
-**Smoke test:** Actions → *Smoke test* → *Run workflow*. It starts a throwaway Navidrome with generated songs and an `_automatic` playlist, installs the app on an Android emulator, and clicks through login, library, playlists, keeping a copy, playback, search, settings and dark mode. It also checks that the server never received a delete request. Screenshots and results are saved to a draft release.
+**Smoke test:** Actions → *Smoke test* → *Run workflow*. It starts a throwaway Navidrome with generated songs and an `_automatic` playlist, installs the app on an Android emulator, and clicks through login, library, playlists, keeping a copy, playback, search, settings and dark mode. It also checks that the server never received a delete request, except deleting the one playlist the test deletes on purpose. Screenshots and results are saved to a draft release.
 
 To build it yourself, you need the JDK 17 and the Android SDK:
 

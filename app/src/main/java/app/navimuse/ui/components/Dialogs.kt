@@ -298,6 +298,25 @@ fun TrashSongDialog(song: Song, ready: Boolean, onDismiss: () -> Unit, onConfirm
     )
 }
 
+/** Confirms deleting playlist [playlist]. */
+@Composable
+fun DeletePlaylistDialog(playlist: app.navimuse.net.Playlist, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete \"${playlist.name}\"?") },
+        text = {
+            Text(
+                "The playlist is deleted from Navidrome. Its songs stay in your library.\n\n" +
+                    "NaviMuse keeps its name and songs on this phone for ${app.navimuse.data.DeletedPlaylists.KEEP_DAYS} days: " +
+                    "restore it from Playlists → Recently deleted." +
+                    if (playlist.isAudioMuseManaged) "\n\nAudioMuse-AI makes its _automatic playlists again the next time it runs clustering." else "",
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 /** Confirms deleting [count] ghost songs (songs Navidrome lists that won't play). */
 @Composable
 fun DeleteGhostsDialog(count: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {

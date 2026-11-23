@@ -1,5 +1,6 @@
 package app.navimuse.ui.components
 
+import androidx.compose.foundation.combinedClickable
 import android.content.Context
 import android.content.Intent
 import android.media.audiofx.AudioEffect
@@ -623,9 +624,9 @@ fun ArtistBubble(artist: Artist, modifier: Modifier = Modifier, onClick: () -> U
 }
 
 @Composable
-fun PlaylistRow(playlist: Playlist, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun PlaylistRow(playlist: Playlist, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     Row(
-        modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Cover(playlist.coverArt, size = 56.dp, placeholder = Icons.AutoMirrored.Filled.QueueMusic, seed = playlist.name)
