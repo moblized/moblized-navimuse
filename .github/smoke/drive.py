@@ -990,6 +990,9 @@ def trash_and_put_back():
     works = wait_for(text="Works: found", contains=True, timeout=60)
     print(f"  {works.get('text')}", flush=True)
     assert 'Share "music"' in works.get("text"), "Test didn't sort out the share's name"
+    # The Test result can run a few lines and push Save below the player: bring it up first.
+    adb("shell", "input", "swipe", "540", "1500", "540", "900", "400")
+    time.sleep(1)
     tap(text="Save", last=True)
     time.sleep(1)
     settings_tab("Playback")

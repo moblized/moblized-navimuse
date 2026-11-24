@@ -1240,9 +1240,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         say(if (name != entry.name.trim()) "Restored as \"$name\" (AudioMuse-AI deletes names ending in _automatic)" else "Restored \"$name\"")
     }
 
+    /** Your playlists (owner names regardless of capitals), without AudioMuse-AI's own. */
     suspend fun ownPlaylists(): List<Playlist> {
         val me = login.value?.username
-        return api().playlists().filter { (it.owner == null || it.owner == me) && !it.isAudioMuseManaged }
+        return api().playlists().filter { it.ownedBy(me) && !it.isAudioMuseManaged }
     }
 
     companion object {
